@@ -22,7 +22,6 @@ export default function Photobooth() {
   const [showGallery, setShowGallery] = createSignal(false);
   const [stats, setStats] = createSignal({ taken: 0, printed: 0 });
 
-  // Preview Modal States
   const [previewItem, setPreviewItem] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("photo");
   const [currentQR, setCurrentQR] = createSignal("");
@@ -33,6 +32,7 @@ export default function Photobooth() {
 
   onMount(async () => {
     try {
+      // Minta resolusi tinggi agar pas dicrop ke 4R (3:2) tetap tajam
       const s = await navigator.mediaDevices.getUserMedia({
         video: { width: 1920, height: 1080 },
       });
@@ -68,16 +68,51 @@ export default function Photobooth() {
 
   const captureProcess = async () => {
     const canvas = document.createElement("canvas");
-    canvas.width = videoRef.videoWidth;
-    canvas.height = videoRef.videoHeight;
+
+    // --- LOGIC CROP 4R (3:2) ---
+    // Jika input 1920x1080 (16:9), kita ambil tinggi penuh (1080)
+    // maka lebarnya harus (1080 * 1.5) = 1620.
+    const videoWidth = videoRef.videoWidth;
+    const videoHeight = videoRef.videoHeight;
+
+    const targetRatio = 3 / 2;
+    let renderWidth, renderHeight;
+
+    if (videoWidth / videoHeight > targetRatio) {
+      renderHeight = videoHeight;
+      renderWidth = videoHeight * targetRatio;
+    } else {
+      renderWidth = videoWidth;
+      renderHeight = videoWidth / targetRatio;
+    }
+
+    canvas.width = renderWidth;
+    canvas.height = renderHeight;
     const ctx = canvas.getContext("2d");
 
+    // Mirroring & Center Crop
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(videoRef, 0, 0, canvas.width, canvas.height);
+
+    const startX = (videoWidth - renderWidth) / 2;
+    const startY = (videoHeight - renderHeight) / 2;
+
+    ctx.drawImage(
+      videoRef,
+      startX,
+      startY,
+      renderWidth,
+      renderHeight, // Source (Crop)
+      0,
+      0,
+      renderWidth,
+      renderHeight, // Destination
+    );
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    const qrSize = 150;
+    // QR Overlay
+    const qrSize = canvas.height * 0.15; // 15% dari tinggi foto
     const padding = 40;
     const qrText = `https://isuzu-booth.com/photo-${Date.now()}`;
     const qrDataUrl = await QRCode.toDataURL(qrText, {
@@ -124,9 +159,27 @@ export default function Photobooth() {
     saveToGallery(img);
     setStats((prev) => ({ ...prev, printed: prev.printed + 1 }));
     const win = window.open("", "_blank");
-    win.document.write(
-      `<html><head><style>@page { size: landscape; margin: 0; } body { margin: 0; display: flex; justify-content: center; align-items: center; background: white; } img { width: 100%; height: 100%; object-fit: contain; }</style></head><body><img src="${img}" onload="window.print();window.close()"></body></html>`,
-    );
+    win.document.write(`
+      <html>
+        <head>
+          <style>
+            @page { 
+              size: 6in 4in landscape; /* Ukuran Standar 4R */
+              margin: 0; 
+            }
+            body { margin: 0; padding: 0; background: white; }
+            img { 
+              width: 6in; 
+              height: 4in; 
+              object-fit: cover;
+            }
+          </style>
+        </head>
+        <body>
+          <img src="${img}" onload="window.print();window.close()">
+        </body>
+      </html>
+    `);
   };
 
   const handleOpenPreview = (item) => {
@@ -141,21 +194,23 @@ export default function Photobooth() {
         .animate-pop { animation: popUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #eab308; border-radius: 10px; }
-        
         .standard-btn { border-radius: 16px; transition: all 0.2s ease; overflow: hidden; }
-        .standard-btn:active { transform: scale(0.98); }
+        
+        /* 4R Ratio Helper */
+        .aspect-4r { aspect-ratio: 3 / 2; }
       `}</style>
 
       {/* HEADER */}
       <div class="mb-8 flex justify-between items-center border-b-2 border-yellow-500 pb-4">
         <div class="flex items-center gap-4">
-          <div class="bg-yellow-500 text-black px-3 py-1 rounded-md font-black uppercase text-xs not-italic">
-            <Zap size={14} fill="currentColor" />
-          </div>
-          <h1 class="text-5xl font-black uppercase tracking-tighter leading-none italic">
+          <Zap size={24} class="text-yellow-500" fill="currentColor" />
+          <h1 class="text-5xl font-black uppercase tracking-tighter italic">
             PHOTO{" "}
-            <span class="text-yellow-500 font-light tracking-normal">
-              BOOTH
+            <span class="text-yellow-500 font-light">
+              BOOTH{" "}
+              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50">
+                4R EDITION
+              </span>
             </span>
           </h1>
         </div>
@@ -177,9 +232,9 @@ export default function Photobooth() {
 
       {/* MAIN VIEW */}
       <div class="flex-1 flex gap-10 items-center justify-center min-h-0">
-        {/* VIEWPORT */}
+        {/* VIEWPORT - SET KE 3:2 (4R) */}
         <div
-          class={`flex-[3] relative aspect-video max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${photo() ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]" : "border-white/10"}`}
+          class={`flex-[3] relative aspect-4r max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${photo() ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]" : "border-white/10"}`}
         >
           <video
             ref={videoRef}
@@ -192,14 +247,14 @@ export default function Photobooth() {
           </Show>
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md">
-              <span class="text-[20rem] font-black text-yellow-500 animate-pulse leading-none italic">
+              <span class="text-[20rem] font-black text-yellow-500 animate-pulse italic">
                 {countdown()}
               </span>
             </div>
           </Show>
         </div>
 
-        {/* CONTROLS - SEMUA LURUS BRO */}
+        {/* CONTROLS */}
         <div class="w-72 flex flex-col gap-6 h-full py-4">
           <Show
             when={!photo()}
@@ -228,8 +283,8 @@ export default function Photobooth() {
                   class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn"
                 >
                   <Printer size={64} />
-                  <span class="font-black uppercase text-3xl italic leading-none">
-                    Print & Save
+                  <span class="font-black uppercase text-3xl italic">
+                    Print 4R
                   </span>
                 </button>
               </>
@@ -243,7 +298,7 @@ export default function Photobooth() {
                 size={80}
                 class="group-hover:scale-110 transition-transform"
               />
-              <span class="font-black uppercase text-5xl italic tracking-tighter leading-none">
+              <span class="font-black uppercase text-5xl italic tracking-tighter">
                 Capture
               </span>
             </button>
