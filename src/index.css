@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@keyframes slideUpIn {
+  0% {
+    opacity: 0;
+    transform: translateY(40px);
+    filter: blur(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.animate-pop {
+  animation: slideUpIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.glass-card {
+  background: rgba(15, 15, 15, 0.6);
+  backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 32px;
+}
+
+.stagger-1 {
+  animation-delay: 0.1s;
+}
+.stagger-2 {
+  animation-delay: 0.2s;
+}
+.stagger-3 {
+  animation-delay: 0.3s;
+}
