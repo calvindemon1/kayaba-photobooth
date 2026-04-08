@@ -13,176 +13,233 @@ import {
   Image as ImageIcon,
   QrCode,
 } from "lucide-solid";
+import frameImgPath from "../assets/img/frame.png"; // Import frame assets
 
 export default function Photobooth() {
-  // --- States ---
+  const API_BASE = "http://localhost:8000";
+
   const [photo, setPhoto] = createSignal(null);
   const [gallery, setGallery] = createSignal([]);
   const [countdown, setCountdown] = createSignal(null);
   const [showStats, setShowStats] = createSignal(false);
   const [showGallery, setShowGallery] = createSignal(false);
   const [stats, setStats] = createSignal({ taken: 0, printed: 0 });
-
-  // Preview Modal States
   const [previewItem, setPreviewItem] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("photo");
   const [currentQR, setCurrentQR] = createSignal("");
 
   let videoRef;
-  const sfxCapture = new Audio("/sfx/shutter.mp3");
-  const sfxCount = new Audio("/sfx/countdown.mp3");
 
-  // --- Camera Initialization ---
-  onMount(async () => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1920, height: 1080 },
-      });
-      videoRef.srcObject = s;
-    } catch (err) {
-      console.error("Camera access denied", err);
-    }
-  });
+  const playAudio = (path) => {
+    const audio = new Audio(path);
+    audio.play().catch((err) => console.warn("Audio play blocked:", path));
+  };
 
-  const generateQRBase64 = async (text) => {
+  const fetchStatistics = async () => {
     try {
-      return await QRCode.toDataURL(text, { width: 1024, margin: 2 });
+      const res = await fetch(`${API_BASE}/api/statistics`);
+      const data = await res.json();
+      if (data.statistics) {
+        setStats({
+          taken: data.statistics.photo_count || 0,
+          printed: data.statistics.print_count || 0,
+        });
+      }
     } catch (err) {
-      return "";
+      console.error(err);
     }
   };
+
+  const fetchGallery = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/all-photos-and-generated-qrs`);
+      const data = await res.json();
+      if (data.paths) {
+        // MAPPING DATA AGAR KONSISTEN DENGAN UI
+        const mappedGallery = data.paths.map((item) => ({
+          src: item.result_photo_url,
+          qr: item.qr_code_url,
+        }));
+        setGallery(mappedGallery);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const base64ToBlob = (base64) => {
+    const parts = base64.split(";base64,");
+    const contentType = parts[0].split(":")[1];
+    const raw = window.atob(parts[1]);
+    const uInt8Array = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) uInt8Array[i] = raw.charCodeAt(i);
+    return new Blob([uInt8Array], { type: contentType });
+  };
+
+  const uploadPhoto = async (base64) => {
+    try {
+      const formData = new FormData();
+      const photoBlob = base64ToBlob(base64);
+      formData.append("photo", photoBlob, `capture-${Date.now()}.png`);
+      formData.append("framing_option_int", "0");
+
+      const res = await fetch(
+        `${API_BASE}/api/download-and-get-download-path`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      if (res.ok) {
+        await fetchStatistics();
+        await fetchGallery();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  onMount(() => {
+    fetchStatistics();
+    fetchGallery();
+    const initCamera = async () => {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1920, height: 1080 },
+        });
+        videoRef.srcObject = s;
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    initCamera();
+  });
 
   const startCapture = () => {
     setPhoto(null);
     setCountdown(3);
+    playAudio("/sfx/countdown.mp3");
     const timer = setInterval(() => {
-      if (countdown() > 1) {
-        sfxCount.play();
-        setCountdown((prev) => prev - 1);
-      } else {
-        clearInterval(timer);
-        captureProcess();
-        setCountdown(null);
-      }
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          captureProcess();
+          return null;
+        }
+        playAudio("/sfx/countdown.mp3");
+        return prev - 1;
+      });
     }, 1000);
-    sfxCount.play();
   };
 
-  // --- Core Capture Logic (Crop 3:2 / 4R) ---
   const captureProcess = async () => {
     const canvas = document.createElement("canvas");
-    const videoWidth = videoRef.videoWidth;
-    const videoHeight = videoRef.videoHeight;
-
-    // Target 4R Ratio (3:2)
+    const vW = videoRef.videoWidth;
+    const vH = videoRef.videoHeight;
     const targetRatio = 3 / 2;
-    let renderWidth, renderHeight;
 
-    if (videoWidth / videoHeight > targetRatio) {
-      renderHeight = videoHeight;
-      renderWidth = videoHeight * targetRatio;
+    let rW, rH;
+    if (vW / vH > targetRatio) {
+      rH = vH;
+      rW = vH * targetRatio;
     } else {
-      renderWidth = videoWidth;
-      renderHeight = videoWidth / targetRatio;
+      rW = vW;
+      rH = vW / targetRatio;
     }
 
-    canvas.width = Math.floor(renderWidth);
-    canvas.height = Math.floor(renderHeight);
+    canvas.width = Math.floor(rW);
+    canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
 
-    // Mirroring & Center Crop
+    // 1. Draw Photo (Mirroring)
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
-
-    const startX = (videoWidth - renderWidth) / 2;
-    const startY = (videoHeight - renderHeight) / 2;
-
     ctx.drawImage(
       videoRef,
-      startX,
-      startY,
-      renderWidth,
-      renderHeight,
+      (vW - rW) / 2,
+      (vH - rH) / 2,
+      rW,
+      rH,
       0,
       0,
       canvas.width,
       canvas.height,
     );
-
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // QR Overlay (Watermark)
+    // 2. Draw Frame Overlay
+    const frameImg = new Image();
+    frameImg.src = frameImgPath;
+    await new Promise((resolve) => {
+      frameImg.onload = resolve;
+    });
+    ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
+
+    // 3. Draw QR Watermark
     const qrSize = Math.floor(canvas.height * 0.18);
     const padding = 30;
-    const qrText = `https://isuzu-booth.com/photo-${Date.now()}`;
+    const qrText = `https://gallery.bydiims2026.com/photo-${Date.now()}`;
     const qrDataUrl = await QRCode.toDataURL(qrText, {
       width: qrSize,
       margin: 1,
-      color: { dark: "#000000", light: "#ffffff" },
     });
 
     const qrImg = new Image();
-    qrImg.onload = () => {
-      ctx.fillStyle = "white";
-      const bgPadding = 8;
-      ctx.fillRect(
-        canvas.width - qrSize - padding - bgPadding,
-        canvas.height - qrSize - padding - bgPadding,
-        qrSize + bgPadding * 2,
-        qrSize + bgPadding * 2,
-      );
-
-      ctx.drawImage(
-        qrImg,
-        canvas.width - qrSize - padding,
-        canvas.height - qrSize - padding,
-        qrSize,
-        qrSize,
-      );
-
-      const finalPhoto = canvas.toDataURL("image/png", 1.0);
-      setPhoto(finalPhoto);
-      generateQRBase64(qrText).then((res) => setCurrentQR(res));
-    };
     qrImg.src = qrDataUrl;
-    sfxCapture.play();
+    await new Promise((resolve) => {
+      qrImg.onload = resolve;
+    });
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(
+      canvas.width - qrSize - padding - 5,
+      canvas.height - qrSize - padding - 5,
+      qrSize + 10,
+      qrSize + 10,
+    );
+    ctx.drawImage(
+      qrImg,
+      canvas.width - qrSize - padding,
+      canvas.height - qrSize - padding,
+      qrSize,
+      qrSize,
+    );
+
+    const finalPhoto = canvas.toDataURL("image/png", 1.0);
+    setPhoto(finalPhoto);
+    QRCode.toDataURL(qrText, { width: 1024, margin: 2 }).then((res) =>
+      setCurrentQR(res),
+    );
+    playAudio("/sfx/shutter.mp3");
   };
 
-  const saveToGallery = (img) => {
-    if (photo() === img) {
-      setStats((prev) => ({ ...prev, taken: prev.taken + 1 }));
-      setPhoto(null);
-    }
-    if (!gallery().some((item) => item.src === img)) {
-      setGallery([{ src: img, qr: currentQR() }, ...gallery()]);
-    }
-  };
-
-  // --- Fixed Print Logic (15.4x10.3) ---
-  const handleNativePrint = (img) => {
-    saveToGallery(img);
-    setStats((prev) => ({ ...prev, printed: prev.printed + 1 }));
-
+  // --- FIX PRINT: Nunggu Load & CSS Presisi ---
+  const handleNativePrint = (imgUrl) => {
     const win = window.open("", "_blank");
     win.document.write(`
       <html>
         <head>
           <style>
-            @page { size: landscape; margin: 0; }
+            @page { size: 15.4cm 10.3cm landscape; margin: 0; }
             body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: white; }
             img { width: 15.4cm; height: 10.3cm; object-fit: cover; }
           </style>
         </head>
         <body>
-          <img src="${img}" onload="setTimeout(() => { window.print(); window.close(); }, 500)">
+          <img src="${imgUrl}" id="print-img">
+          <script>
+            const img = document.getElementById('print-img');
+            img.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            };
+          </script>
         </body>
       </html>
     `);
-  };
-
-  const handleOpenPreview = (item) => {
-    setPreviewItem(item);
-    setActiveTab("photo");
   };
 
   return (
@@ -193,7 +250,6 @@ export default function Photobooth() {
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #eab308; border-radius: 10px; }
         .standard-btn { border-radius: 16px; transition: all 0.2s ease; overflow: hidden; }
-        .aspect-4r { aspect-ratio: 3 / 2; }
       `}</style>
 
       {/* HEADER */}
@@ -204,7 +260,7 @@ export default function Photobooth() {
             PHOTO{" "}
             <span class="text-yellow-500 font-light">
               BOOTH{" "}
-              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50 tracking-normal font-bold">
+              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50 font-bold">
                 4R-SYSTEM
               </span>
             </span>
@@ -212,13 +268,19 @@ export default function Photobooth() {
         </div>
         <div class="flex gap-4">
           <button
-            onClick={() => setShowStats(true)}
+            onClick={() => {
+              fetchStatistics();
+              setShowStats(true);
+            }}
             class="bg-zinc-900 p-4 border border-white/10 hover:border-yellow-500 transition-all standard-btn"
           >
             <BarChart3 size={24} />
           </button>
           <button
-            onClick={() => setShowGallery(true)}
+            onClick={() => {
+              fetchGallery();
+              setShowGallery(true);
+            }}
             class="bg-zinc-900 p-4 border border-white/10 hover:border-yellow-500 transition-all standard-btn"
           >
             <LayoutGrid size={24} />
@@ -228,17 +290,9 @@ export default function Photobooth() {
 
       {/* MAIN VIEW */}
       <div class="flex-1 flex gap-10 items-center justify-center min-h-0">
-        {/* VIEWPORT - Locked to 3:2 Ratio */}
         <div
-          class={`relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${
-            photo()
-              ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]"
-              : "border-white/10"
-          }`}
-          style={{
-            width: "auto", // Lebar mengikuti tinggi agar rasio 3:2 pas
-            "flex-shrink": "0", // Jangan biarkan container ini mengecil secara paksa
-          }}
+          class={`relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${photo() ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]" : "border-white/10"}`}
+          style={{ width: "auto", "flex-shrink": "0" }}
         >
           <video
             ref={videoRef}
@@ -246,25 +300,18 @@ export default function Photobooth() {
             class={`w-full h-full object-cover ${photo() ? "hidden" : "block"}`}
             style={{ transform: "scaleX(-1)" }}
           />
-
           <Show when={photo()}>
-            <img
-              src={photo()}
-              class="w-full h-full object-cover animate-pop"
-              style={{ transform: "none" }}
-            />
+            <img src={photo()} class="w-full h-full object-cover animate-pop" />
           </Show>
-
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md">
-              <span class="text-[18rem] font-black text-yellow-500 animate-pulse italic leading-none">
+              <span class="text-[20rem] font-black text-yellow-500 animate-pulse italic leading-none">
                 {countdown()}
               </span>
             </div>
           </Show>
         </div>
 
-        {/* CONTROLS */}
         <div class="w-72 flex flex-col gap-5 h-full py-4">
           <Show
             when={!photo()}
@@ -272,7 +319,7 @@ export default function Photobooth() {
               <>
                 <button
                   onClick={() => setPhoto(null)}
-                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn transition-colors"
+                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn"
                 >
                   <RotateCcw size={40} />
                   <span class="font-black uppercase text-xl italic">
@@ -280,8 +327,11 @@ export default function Photobooth() {
                   </span>
                 </button>
                 <button
-                  onClick={() => saveToGallery(photo())}
-                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn transition-colors"
+                  onClick={() => {
+                    uploadPhoto(photo());
+                    setPhoto(null);
+                  }}
+                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
                 >
                   <Save size={40} />
                   <span class="font-black uppercase text-xl italic text-zinc-600">
@@ -289,8 +339,13 @@ export default function Photobooth() {
                   </span>
                 </button>
                 <button
-                  onClick={() => handleNativePrint(photo())}
-                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn transition-colors"
+                  onClick={async () => {
+                    const current = photo();
+                    await uploadPhoto(current);
+                    handleNativePrint(current);
+                    setPhoto(null);
+                  }}
+                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn"
                 >
                   <Printer size={64} />
                   <span class="font-black uppercase text-3xl italic leading-none">
@@ -321,7 +376,7 @@ export default function Photobooth() {
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 backdrop-blur-lg p-10 animate-pop">
           <div class="w-full max-w-6xl h-full flex flex-col">
             <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4">
-              <h2 class="text-4xl font-black italic uppercase">
+              <h2 class="text-4xl font-black italic uppercase tracking-tighter">
                 Fleet <span class="text-yellow-500 font-light">Archives</span>
               </h2>
               <button
@@ -334,21 +389,24 @@ export default function Photobooth() {
             <div class="flex-1 grid grid-cols-3 gap-8 overflow-y-auto pr-4 custom-scrollbar">
               <For each={gallery()}>
                 {(item) => (
-                  <div class="group relative aspect-4r bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl transition-all">
+                  <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl">
                     <img
                       src={item.src}
                       class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                     <div class="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-8">
                       <button
-                        onClick={() => handleOpenPreview(item)}
-                        class="bg-white text-black p-5 rounded-full hover:scale-110 transition-all shadow-xl"
+                        onClick={() => {
+                          setPreviewItem(item);
+                          setActiveTab("photo");
+                        }}
+                        class="bg-white text-black p-5 rounded-full hover:scale-110 shadow-xl"
                       >
                         <Eye size={30} />
                       </button>
                       <button
                         onClick={() => handleNativePrint(item.src)}
-                        class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 transition-all shadow-xl"
+                        class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 shadow-xl"
                       >
                         <Printer size={30} />
                       </button>
@@ -364,12 +422,10 @@ export default function Photobooth() {
       {/* PREVIEW MODAL */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/95 backdrop-blur-2xl p-6 md:p-12 animate-pop">
-          {/* Kunci lebar modal di sini (misal 80vw) supaya nggak berubah pas pindah tab */}
           <div
             class="relative flex flex-col bg-zinc-900 border-2 border-white/10 shadow-2xl rounded-[40px] overflow-hidden"
-            style={{ width: "80vw", "max-width": "1200px", height: "auto" }}
+            style={{ width: "80vw", "max-width": "1200px" }}
           >
-            {/* TABS HEADER */}
             <div class="flex border-b border-white/10 h-16 shrink-0">
               <button
                 onClick={() => setActiveTab("photo")}
@@ -390,25 +446,21 @@ export default function Photobooth() {
                 <X size={28} />
               </button>
             </div>
-
-            {/* TAB CONTENT - Kunci rasionya di sini supaya area putih/hitamnya sama */}
             <div class="aspect-[3/2] flex items-center justify-center p-6 bg-black/50 overflow-hidden">
               <Show when={activeTab() === "photo"}>
+                {/* PAKAI src DARI MAPPING GALLERY */}
                 <img
                   src={previewItem().src}
                   class="w-full h-full object-contain shadow-2xl animate-pop rounded-xl"
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
-                {/* QR dibungkus div putih yang tetep proporsional */}
-                <div class="w-full h-full flex items-center justify-center">
-                  <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop">
-                    {/* Ukuran QR dikunci biar nggak menuhin layar tapi tetep gede */}
-                    <img
-                      src={previewItem().qr}
-                      class="w-[300px] h-[300px] md:w-[450px] md:h-[450px]"
-                    />
-                  </div>
+                <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop">
+                  {/* PAKAI qr DARI MAPPING GALLERY */}
+                  <img
+                    src={previewItem().qr}
+                    class="w-[300px] h-[300px] md:w-[450px] md:h-[450px]"
+                  />
                 </div>
               </Show>
             </div>
@@ -431,7 +483,7 @@ export default function Photobooth() {
             </h2>
             <div class="grid grid-cols-2 gap-8 text-center">
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic leading-none block">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block text-zinc-500">
                   Total Captured
                 </span>
                 <span class="text-8xl font-black italic leading-none">
@@ -439,7 +491,7 @@ export default function Photobooth() {
                 </span>
               </div>
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic leading-none block">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block text-zinc-500">
                   Total Printed
                 </span>
                 <span class="text-8xl font-black italic text-yellow-500 leading-none">
