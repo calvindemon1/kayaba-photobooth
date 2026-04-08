@@ -16,10 +16,12 @@ import {
 import frameImgPath from "../assets/img/frame.png";
 
 export default function Photobooth() {
-  const API_BASE = "http://localhost:8000";
+  const API_BASE = "https://lv24k4r6-8000.asse.devtunnels.ms";
+  const LOCAL_BASE = "http://localhost:8000";
 
   const [photo, setPhoto] = createSignal(null);
   const [gallery, setGallery] = createSignal([]);
+  const [isLoadingGallery, setIsLoadingGallery] = createSignal(false);
   const [countdown, setCountdown] = createSignal(null);
   const [showStats, setShowStats] = createSignal(false);
   const [showGallery, setShowGallery] = createSignal(false);
@@ -50,34 +52,48 @@ export default function Photobooth() {
   };
 
   const fetchGallery = async () => {
+    setIsLoadingGallery(true);
     try {
-      const res = await fetch(`${API_BASE}/api/all-photos-and-generated-qrs`);
-      const data = await res.json();
-      if (data.paths) {
-        const mappedGallery = data.paths.map((item) => ({
-          src: item.result_photo_url,
-          qr: item.qr_code_url,
+      // 1. Ambil data LOCAL untuk foto (biar kenceng)
+      const resLocal = await fetch(
+        `${LOCAL_BASE}/api/all-local-photos-and-generated-qrs`,
+      );
+      const dataLocal = await resLocal.json();
+
+      // 2. Ambil data CLOUD untuk link QR (biar bisa discan)
+      const resCloud = await fetch(
+        `${API_BASE}/api/all-photos-and-generated-qrs`,
+      );
+      const dataCloud = await resCloud.json();
+
+      if (dataLocal.paths && dataCloud.paths) {
+        // Merge data: foto ambil local, qr ambil cloud
+        const mappedGallery = dataLocal.paths.map((item, index) => ({
+          src: item.result_photo_url.startsWith("http")
+            ? item.result_photo_url
+            : `${LOCAL_BASE}${item.result_photo_url}`,
+          qr: dataCloud.paths[index]?.qr_code_url || item.qr_code_url,
         }));
         setGallery(mappedGallery);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Gallery Fetch Failed", err);
+    } finally {
+      setTimeout(() => setIsLoadingGallery(false), 500);
     }
   };
 
-  // --- NEW: Print Toggle API ---
   const togglePrintStatus = async (isPrinted) => {
     try {
       const formData = new FormData();
       formData.append("is_printed", isPrinted ? "1" : "0");
-
       await fetch(`${API_BASE}/api/print-toggle`, {
         method: "POST",
         body: formData,
       });
-      await fetchStatistics(); // Refresh angka stats
+      await fetchStatistics();
     } catch (err) {
-      console.error("Toggle Print Failed:", err);
+      console.error(err);
     }
   };
 
@@ -106,6 +122,7 @@ export default function Photobooth() {
       );
 
       if (res.ok) {
+        await fetchStatistics();
         await fetchGallery();
         return true;
       }
@@ -184,22 +201,21 @@ export default function Photobooth() {
 
     const frameImg = new Image();
     frameImg.src = frameImgPath;
-    await new Promise((resolve) => {
-      frameImg.onload = resolve;
+    await new Promise((res) => {
+      frameImg.onload = res;
     });
     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
 
-    // QR DUMMY BUAT DI PRINT
     const qrSize = Math.floor(canvas.height * 0.18);
     const padding = 30;
-    const qrDataUrl = await QRCode.toDataURL(
-      "https://gallery.bydiims2026.com",
-      { width: qrSize, margin: 1 },
-    );
+    const qrDataUrl = await QRCode.toDataURL("SCAN AT GALLERY", {
+      width: qrSize,
+      margin: 1,
+    });
     const qrImg = new Image();
     qrImg.src = qrDataUrl;
-    await new Promise((resolve) => {
-      qrImg.onload = resolve;
+    await new Promise((res) => {
+      qrImg.onload = res;
     });
 
     ctx.fillStyle = "white";
@@ -221,10 +237,8 @@ export default function Photobooth() {
     playAudio("/sfx/shutter.mp3");
   };
 
-  const handleNativePrint = (imgUrl, fromGallery = false) => {
-    // 1. Update backend statistik print
+  const handleNativePrint = (imgUrl) => {
     togglePrintStatus(true);
-
     const win = window.open("", "_blank");
     win.document.write(`
       <html>
@@ -250,7 +264,9 @@ export default function Photobooth() {
     <div class="fixed inset-0 w-full h-full bg-black overflow-hidden p-6 md:p-10 italic font-sans flex flex-col text-white select-none">
       <style>{`
         @keyframes popUp { 0% { opacity: 0; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+        @keyframes shimmer { 0% { background-position: -468px 0 } 100% { background-position: 468px 0 } }
         .animate-pop { animation: popUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .skeleton { background: #18181b; background-image: linear-gradient(to right, #18181b 0%, #27272a 20%, #18181b 40%, #18181b 100%); background-repeat: no-repeat; background-size: 800px 104px; animation: shimmer 1.5s linear infinite forwards; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #eab308; border-radius: 10px; }
         .standard-btn { border-radius: 16px; transition: all 0.2s ease; overflow: hidden; }
@@ -335,7 +351,7 @@ export default function Photobooth() {
                 <button
                   onClick={async () => {
                     await uploadPhoto(photo());
-                    await togglePrintStatus(false); // is_printed = 0
+                    await togglePrintStatus(false);
                     setPhoto(null);
                   }}
                   class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
@@ -378,7 +394,6 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* GALLERY POPUP */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 backdrop-blur-lg p-10 animate-pop">
           <div class="w-full max-w-6xl h-full flex flex-col">
@@ -394,39 +409,47 @@ export default function Photobooth() {
               </button>
             </div>
             <div class="flex-1 grid grid-cols-3 gap-8 overflow-y-auto pr-4 custom-scrollbar">
-              <For each={gallery()}>
-                {(item) => (
-                  <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl">
-                    <img
-                      src={item.src}
-                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div class="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-8">
-                      <button
-                        onClick={() => {
-                          setPreviewItem(item);
-                          setActiveTab("photo");
-                        }}
-                        class="bg-white text-black p-5 rounded-full hover:scale-110 shadow-xl"
-                      >
-                        <Eye size={30} />
-                      </button>
-                      <button
-                        onClick={() => handleNativePrint(item.src, true)}
-                        class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 shadow-xl"
-                      >
-                        <Printer size={30} />
-                      </button>
+              <Show when={isLoadingGallery()}>
+                <For each={[1, 2, 3, 4, 5, 6]}>
+                  {() => (
+                    <div class="aspect-[3/2] rounded-3xl skeleton border-2 border-white/5"></div>
+                  )}
+                </For>
+              </Show>
+              <Show when={!isLoadingGallery()}>
+                <For each={gallery()}>
+                  {(item) => (
+                    <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl transition-all">
+                      <img
+                        src={item.src}
+                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div class="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-8">
+                        <button
+                          onClick={() => {
+                            setPreviewItem(item);
+                            setActiveTab("photo");
+                          }}
+                          class="bg-white text-black p-5 rounded-full hover:scale-110 shadow-xl"
+                        >
+                          <Eye size={30} />
+                        </button>
+                        <button
+                          onClick={() => handleNativePrint(item.src)}
+                          class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 shadow-xl"
+                        >
+                          <Printer size={30} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </For>
+                  )}
+                </For>
+              </Show>
             </div>
           </div>
         </div>
       </Show>
 
-      {/* PREVIEW MODAL */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/95 backdrop-blur-2xl p-6 md:p-12 animate-pop">
           <div
@@ -457,7 +480,7 @@ export default function Photobooth() {
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
-                  class="w-full h-full object-contain animate-pop rounded-xl"
+                  class="w-full h-full object-contain shadow-2xl animate-pop rounded-xl"
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
@@ -473,7 +496,7 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* STATS */}
+      {/* STATS tetap sama ... */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl animate-pop">
           <div class="w-full max-w-2xl bg-zinc-900 p-12 border-l-8 border-yellow-500 relative shadow-2xl rounded-[32px]">
