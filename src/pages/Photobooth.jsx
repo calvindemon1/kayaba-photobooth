@@ -11,13 +11,13 @@ import {
   Save,
   Eye,
   Image as ImageIcon,
-  QrCode,
+  QrCode as QrIcon,
 } from "lucide-solid";
 import frameImgPath from "../assets/img/frame.png";
 
 export default function Photobooth() {
-  //   const API_BASE = "http://localhost:8000";
-  const API_BASE = "https://lv24k4r6-8000.asse.devtunnels.ms";
+  const BASE_URL = "http://localhost:8000";
+  const DOWNLOAD_PAGE_URL = "http://localhost:3344/download";
 
   const [photo, setPhoto] = createSignal(null);
   const [gallery, setGallery] = createSignal([]);
@@ -30,6 +30,7 @@ export default function Photobooth() {
   const [activeTab, setActiveTab] = createSignal("photo");
 
   let videoRef;
+  let qrCanvasRef; // Ref untuk menggambar QR manual pake library qrcode
 
   const playAudio = (path) => {
     const audio = new Audio(path);
@@ -38,7 +39,7 @@ export default function Photobooth() {
 
   const fetchStatistics = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/statistics`);
+      const res = await fetch(`${BASE_URL}/api/statistics`);
       const data = await res.json();
       if (data.statistics) {
         setStats({
@@ -54,15 +55,24 @@ export default function Photobooth() {
   const fetchGallery = async () => {
     setIsLoadingGallery(true);
     try {
-      // Ambil data dari API_BASE (bisa DevTunnel / Localhost)
-      const res = await fetch(`${API_BASE}/api/all-photos-and-generated-qrs`);
-      const data = await res.json();
+      const [resLocal, resCloud] = await Promise.all([
+        fetch(`${BASE_URL}/api/all-local-photos-and-generated-qrs`),
+        fetch(`${BASE_URL}/api/all-photos-and-generated-qrs`),
+      ]);
 
-      if (data.paths) {
-        const mappedGallery = data.paths.map((item) => ({
-          src: item.result_photo_url,
-          qr: item.qr_code_url,
-        }));
+      const dataLocal = await resLocal.json();
+      const dataCloud = await resCloud.json();
+
+      if (dataLocal.paths && dataCloud.paths) {
+        const mappedGallery = dataLocal.paths.map((item, index) => {
+          const fileName = item.result_photo_url.split("/").pop();
+          const cloudPhotoUrl = dataCloud.paths[index]?.result_photo_url || "";
+
+          return {
+            src: `${BASE_URL}/photo-result/${fileName}`,
+            downloadUrl: `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(cloudPhotoUrl)}`,
+          };
+        });
         setGallery(mappedGallery);
       }
     } catch (err) {
@@ -72,17 +82,26 @@ export default function Photobooth() {
     }
   };
 
+  // Fungsi buat nge-render QR ke canvas manual pake package 'qrcode'
+  const generateQRInModal = (url) => {
+    if (qrCanvasRef) {
+      QRCode.toCanvas(qrCanvasRef, url, { width: 350, margin: 2 }, (err) => {
+        if (err) console.error(err);
+      });
+    }
+  };
+
   const togglePrintStatus = async (isPrinted) => {
     try {
       const formData = new FormData();
       formData.append("is_printed", isPrinted ? "1" : "0");
-      await fetch(`${API_BASE}/api/print-toggle`, {
+      await fetch(`${BASE_URL}/api/print-toggle`, {
         method: "POST",
         body: formData,
       });
       await fetchStatistics();
     } catch (err) {
-      console.error("Print Toggle Error:", err);
+      console.error("Toggle Error:", err);
     }
   };
 
@@ -101,15 +120,10 @@ export default function Photobooth() {
       const photoBlob = base64ToBlob(base64);
       formData.append("photo", photoBlob, `capture-${Date.now()}.png`);
       formData.append("framing_option_int", "0");
-
       const res = await fetch(
-        `${API_BASE}/api/download-and-get-download-path`,
-        {
-          method: "POST",
-          body: formData,
-        },
+        `${BASE_URL}/api/download-and-get-download-path`,
+        { method: "POST", body: formData },
       );
-
       if (res.ok) {
         await fetchStatistics();
         await fetchGallery();
@@ -131,7 +145,7 @@ export default function Photobooth() {
         });
         videoRef.srcObject = s;
       } catch (err) {
-        console.error("Camera Error:", err);
+        console.error(err);
       }
     };
     initCamera();
@@ -167,11 +181,9 @@ export default function Photobooth() {
       rW = vW;
       rH = vW / targetRatio;
     }
-
     canvas.width = Math.floor(rW);
     canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
-
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(
@@ -186,41 +198,12 @@ export default function Photobooth() {
       canvas.height,
     );
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-
     const frameImg = new Image();
     frameImg.src = frameImgPath;
     await new Promise((res) => {
       frameImg.onload = res;
     });
     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
-
-    const qrSize = Math.floor(canvas.height * 0.18);
-    const padding = 30;
-    const qrDataUrl = await QRCode.toDataURL("SCAN AT GALLERY", {
-      width: qrSize,
-      margin: 1,
-    });
-    const qrImg = new Image();
-    qrImg.src = qrDataUrl;
-    await new Promise((res) => {
-      qrImg.onload = res;
-    });
-
-    ctx.fillStyle = "white";
-    ctx.fillRect(
-      canvas.width - qrSize - padding - 5,
-      canvas.height - qrSize - padding - 5,
-      qrSize + 10,
-      qrSize + 10,
-    );
-    ctx.drawImage(
-      qrImg,
-      canvas.width - qrSize - padding,
-      canvas.height - qrSize - padding,
-      qrSize,
-      qrSize,
-    );
-
     setPhoto(canvas.toDataURL("image/png", 1.0));
     playAudio("/sfx/shutter.mp3");
   };
@@ -261,10 +244,10 @@ export default function Photobooth() {
       `}</style>
 
       {/* HEADER */}
-      <div class="mb-8 flex justify-between items-center border-b-2 border-yellow-500 pb-4">
+      <div class="mb-8 flex justify-between items-center border-b-2 border-yellow-500 pb-4 shrink-0 leading-none">
         <div class="flex items-center gap-4">
           <Zap size={24} class="text-yellow-500" fill="currentColor" />
-          <h1 class="text-5xl font-black uppercase tracking-tighter italic leading-none">
+          <h1 class="text-5xl font-black uppercase tracking-tighter italic">
             PHOTO{" "}
             <span class="text-yellow-500 font-light">
               BOOTH{" "}
@@ -296,6 +279,7 @@ export default function Photobooth() {
         </div>
       </div>
 
+      {/* MAIN VIEW */}
       <div class="flex-1 flex gap-10 items-center justify-center min-h-0">
         <div
           class="relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] border-white/10"
@@ -322,14 +306,14 @@ export default function Photobooth() {
           </Show>
         </div>
 
-        <div class="w-72 flex flex-col gap-5 h-full py-4">
+        <div class="w-72 flex flex-col gap-5 h-full py-4 leading-none">
           <Show
             when={!photo()}
             fallback={
               <>
                 <button
                   onClick={() => setPhoto(null)}
-                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn transition-colors"
+                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn"
                 >
                   <RotateCcw size={40} />
                   <span class="font-black uppercase text-xl italic">
@@ -342,7 +326,7 @@ export default function Photobooth() {
                     await togglePrintStatus(false);
                     setPhoto(null);
                   }}
-                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn transition-colors"
+                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
                 >
                   <Save size={40} />
                   <span class="font-black uppercase text-xl italic text-zinc-600">
@@ -356,10 +340,10 @@ export default function Photobooth() {
                     handleNativePrint(current);
                     setPhoto(null);
                   }}
-                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn transition-colors"
+                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn"
                 >
                   <Printer size={64} />
-                  <span class="font-black uppercase text-3xl italic leading-none">
+                  <span class="font-black uppercase text-3xl italic">
                     Print 4R
                   </span>
                 </button>
@@ -386,37 +370,34 @@ export default function Photobooth() {
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 backdrop-blur-lg p-10 animate-pop">
           <div class="w-full max-w-6xl h-full flex flex-col">
-            <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4">
-              <h2 class="text-4xl font-black italic uppercase tracking-tighter">
-                Fleet{" "}
-                <span class="text-yellow-500 font-light tracking-normal">
-                  Archives
-                </span>
+            <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4 shrink-0">
+              <h2 class="text-4xl font-black italic uppercase tracking-tighter text-white">
+                Fleet Archives
               </h2>
               <button
                 onClick={() => setShowGallery(false)}
-                class="bg-zinc-900 p-4 border border-white/10 rounded-2xl hover:text-red-500 transition-all"
+                class="bg-zinc-900 p-4 border border-white/10 rounded-2xl hover:text-red-500 transition-all text-white"
               >
                 <X size={32} />
               </button>
             </div>
-            <div class="flex-1 grid grid-cols-3 gap-8 overflow-y-auto pr-4 custom-scrollbar">
+            <div class="flex-1 grid grid-cols-3 gap-6 overflow-y-auto pr-6 pb-20 custom-scrollbar">
               <Show when={isLoadingGallery()}>
                 <For each={[1, 2, 3, 4, 5, 6]}>
                   {() => (
-                    <div class="aspect-[3/2] rounded-3xl skeleton border-2 border-white/5"></div>
+                    <div class="aspect-[3/2] rounded-[40px] skeleton border-2 border-white/5"></div>
                   )}
                 </For>
               </Show>
               <Show when={!isLoadingGallery()}>
                 <For each={gallery()}>
                   {(item) => (
-                    <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl transition-all">
+                    <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-[40px] transition-all duration-300">
                       <img
                         src={item.src}
-                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       />
-                      <div class="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-8">
+                      <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-8 backdrop-blur-sm">
                         <button
                           onClick={() => {
                             setPreviewItem(item);
@@ -449,18 +430,24 @@ export default function Photobooth() {
             class="relative flex flex-col bg-zinc-900 border-2 border-white/10 shadow-2xl rounded-[40px] overflow-hidden"
             style={{ width: "80vw", "max-width": "1200px" }}
           >
-            <div class="flex border-b border-white/10 h-16 shrink-0">
+            <div class="flex border-b border-white/10 h-16 shrink-0 bg-zinc-900 leading-none">
               <button
                 onClick={() => setActiveTab("photo")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "photo" ? "bg-white text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <ImageIcon size={20} /> Preview Photo
+                <ImageIcon size={20} /> Photo
               </button>
               <button
-                onClick={() => setActiveTab("qr")}
+                onClick={() => {
+                  setActiveTab("qr");
+                  setTimeout(
+                    () => generateQRInModal(previewItem().downloadUrl),
+                    50,
+                  );
+                }}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <QrCode size={20} /> Preview QR
+                <QrIcon size={20} /> Download QR
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
@@ -469,7 +456,7 @@ export default function Photobooth() {
                 <X size={28} />
               </button>
             </div>
-            <div class="aspect-[3/2] flex items-center justify-center p-6 bg-black/50 overflow-hidden">
+            <div class="aspect-[3/2] flex items-center justify-center p-10 bg-black/50 overflow-hidden relative">
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
@@ -477,11 +464,21 @@ export default function Photobooth() {
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
-                <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop">
-                  <img
-                    src={previewItem().qr}
-                    class="w-[300px] h-[300px] md:w-[450px] md:h-[450px]"
-                  />
+                <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop flex flex-col items-center gap-6">
+                  <canvas ref={qrCanvasRef}></canvas>
+                  <div class="flex flex-col items-center gap-2">
+                    <p class="text-black font-black text-center uppercase text-sm">
+                      Scan to Download to Mobile
+                    </p>
+                    {/* LINK UNTUK TESTING PC */}
+                    <a
+                      href={previewItem().downloadUrl}
+                      target="_blank"
+                      class="text-yellow-600 font-bold underline text-xs"
+                    >
+                      Test Link (PC ONLY)
+                    </a>
+                  </div>
                 </div>
               </Show>
             </div>
@@ -492,7 +489,7 @@ export default function Photobooth() {
       {/* STATS MODAL */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl animate-pop">
-          <div class="w-full max-w-2xl bg-zinc-900 p-12 border-l-8 border-yellow-500 relative shadow-2xl rounded-[32px]">
+          <div class="w-full max-w-2xl bg-zinc-900 p-12 border-l-8 border-yellow-500 relative shadow-2xl rounded-[32px] text-white">
             <button
               onClick={() => setShowStats(false)}
               class="absolute top-8 right-8 text-white/30 hover:text-white transition-colors"
@@ -502,9 +499,9 @@ export default function Photobooth() {
             <h2 class="text-4xl font-black uppercase italic mb-10 pb-4 border-b border-white/5 tracking-tighter">
               Fleet Telemetry
             </h2>
-            <div class="grid grid-cols-2 gap-8 text-center">
+            <div class="grid grid-cols-2 gap-8 text-center leading-none">
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 block leading-none">
                   Total Captured
                 </span>
                 <span class="text-8xl font-black italic leading-none">
@@ -512,7 +509,7 @@ export default function Photobooth() {
                 </span>
               </div>
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 block leading-none">
                   Total Printed
                 </span>
                 <span class="text-8xl font-black italic text-yellow-500 leading-none">
