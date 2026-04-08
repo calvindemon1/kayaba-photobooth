@@ -71,7 +71,7 @@ export default function Photobooth() {
         const mappedGallery = dataLocal.paths.map((item, index) => ({
           src: item.result_photo_url.startsWith("http")
             ? item.result_photo_url
-            : `${LOCAL_BASE}${item.result_photo_url}`,
+            : `D:\Globe\Photobooth\back-end\results\photos\result\${item.result_photo_url}`,
           qr: dataCloud.paths[index]?.qr_code_url || item.qr_code_url,
         }));
         setGallery(mappedGallery);
