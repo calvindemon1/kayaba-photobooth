@@ -69,12 +69,11 @@ export default function Photobooth() {
   const captureProcess = async () => {
     const canvas = document.createElement("canvas");
 
-    // --- LOGIC CROP 4R (3:2) ---
-    // Jika input 1920x1080 (16:9), kita ambil tinggi penuh (1080)
-    // maka lebarnya harus (1080 * 1.5) = 1620.
+    // Gunakan resolusi native video sebagai basis
     const videoWidth = videoRef.videoWidth;
     const videoHeight = videoRef.videoHeight;
 
+    // Rasio 4R (3:2)
     const targetRatio = 3 / 2;
     let renderWidth, renderHeight;
 
@@ -86,8 +85,8 @@ export default function Photobooth() {
       renderHeight = videoWidth / targetRatio;
     }
 
-    canvas.width = renderWidth;
-    canvas.height = renderHeight;
+    canvas.width = Math.floor(renderWidth);
+    canvas.height = Math.floor(renderHeight);
     const ctx = canvas.getContext("2d");
 
     // Mirroring & Center Crop
@@ -102,33 +101,39 @@ export default function Photobooth() {
       startX,
       startY,
       renderWidth,
-      renderHeight, // Source (Crop)
+      renderHeight,
       0,
       0,
-      renderWidth,
-      renderHeight, // Destination
+      canvas.width,
+      canvas.height,
     );
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // QR Overlay
-    const qrSize = canvas.height * 0.15; // 15% dari tinggi foto
-    const padding = 40;
+    // --- QR POSITIONAL FIX ---
+    const qrSize = Math.floor(canvas.height * 0.18); // Ukuran QR 18% dari tinggi foto
+    const padding = 30; // Jarak dari pinggir
+
     const qrText = `https://isuzu-booth.com/photo-${Date.now()}`;
+    // Generate QR
     const qrDataUrl = await QRCode.toDataURL(qrText, {
       width: qrSize,
       margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
     });
 
     const qrImg = new Image();
     qrImg.onload = () => {
+      // Background putih buat QR agar tidak nempel ke pinggir (Safe Area)
       ctx.fillStyle = "white";
+      const bgPadding = 8;
       ctx.fillRect(
-        canvas.width - qrSize - padding - 10,
-        canvas.height - qrSize - padding - 10,
-        qrSize + 20,
-        qrSize + 20,
+        canvas.width - qrSize - padding - bgPadding,
+        canvas.height - qrSize - padding - bgPadding,
+        qrSize + bgPadding * 2,
+        qrSize + bgPadding * 2,
       );
+
       ctx.drawImage(
         qrImg,
         canvas.width - qrSize - padding,
@@ -137,7 +142,7 @@ export default function Photobooth() {
         qrSize,
       );
 
-      const finalPhoto = canvas.toDataURL("image/png");
+      const finalPhoto = canvas.toDataURL("image/png", 1.0); // High Quality
       setPhoto(finalPhoto);
       generateQRBase64(qrText).then((res) => setCurrentQR(res));
     };
@@ -158,25 +163,36 @@ export default function Photobooth() {
   const handleNativePrint = (img) => {
     saveToGallery(img);
     setStats((prev) => ({ ...prev, printed: prev.printed + 1 }));
+
     const win = window.open("", "_blank");
     win.document.write(`
       <html>
         <head>
           <style>
             @page { 
-              size: 6in 4in landscape; /* Ukuran Standar 4R */
-              margin: 0; 
+              size: 6in 4in landscape; 
+              margin: 0mm; /* Paksa margin nol */
             }
-            body { margin: 0; padding: 0; background: white; }
+            html, body { 
+              margin: 0; 
+              padding: 0; 
+              width: 100%; 
+              height: 100%; 
+              overflow: hidden;
+              background-color: white;
+            }
             img { 
+              /* Menggunakan unit absolut untuk memastikan ukuran 4R di Windows */
               width: 6in; 
               height: 4in; 
+              display: block;
               object-fit: cover;
+              image-rendering: -webkit-optimize-contrast;
             }
           </style>
         </head>
         <body>
-          <img src="${img}" onload="window.print();window.close()">
+          <img src="${img}" onload="setTimeout(() => { window.print(); window.close(); }, 500)">
         </body>
       </html>
     `);
