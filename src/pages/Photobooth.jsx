@@ -15,6 +15,7 @@ import {
 } from "lucide-solid";
 
 export default function Photobooth() {
+  // --- States ---
   const [photo, setPhoto] = createSignal(null);
   const [gallery, setGallery] = createSignal([]);
   const [countdown, setCountdown] = createSignal(null);
@@ -22,6 +23,7 @@ export default function Photobooth() {
   const [showGallery, setShowGallery] = createSignal(false);
   const [stats, setStats] = createSignal({ taken: 0, printed: 0 });
 
+  // Preview Modal States
   const [previewItem, setPreviewItem] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("photo");
   const [currentQR, setCurrentQR] = createSignal("");
@@ -30,9 +32,9 @@ export default function Photobooth() {
   const sfxCapture = new Audio("/sfx/shutter.mp3");
   const sfxCount = new Audio("/sfx/countdown.mp3");
 
+  // --- Camera Initialization ---
   onMount(async () => {
     try {
-      // Minta resolusi tinggi agar pas dicrop ke 4R (3:2) tetap tajam
       const s = await navigator.mediaDevices.getUserMedia({
         video: { width: 1920, height: 1080 },
       });
@@ -66,14 +68,13 @@ export default function Photobooth() {
     sfxCount.play();
   };
 
+  // --- Core Capture Logic (Crop 3:2 / 4R) ---
   const captureProcess = async () => {
     const canvas = document.createElement("canvas");
-
-    // Gunakan resolusi native video sebagai basis
     const videoWidth = videoRef.videoWidth;
     const videoHeight = videoRef.videoHeight;
 
-    // Rasio 4R (3:2)
+    // Target 4R Ratio (3:2)
     const targetRatio = 3 / 2;
     let renderWidth, renderHeight;
 
@@ -110,12 +111,10 @@ export default function Photobooth() {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // --- QR POSITIONAL FIX ---
-    const qrSize = Math.floor(canvas.height * 0.18); // Ukuran QR 18% dari tinggi foto
-    const padding = 30; // Jarak dari pinggir
-
+    // QR Overlay (Watermark)
+    const qrSize = Math.floor(canvas.height * 0.18);
+    const padding = 30;
     const qrText = `https://isuzu-booth.com/photo-${Date.now()}`;
-    // Generate QR
     const qrDataUrl = await QRCode.toDataURL(qrText, {
       width: qrSize,
       margin: 1,
@@ -124,7 +123,6 @@ export default function Photobooth() {
 
     const qrImg = new Image();
     qrImg.onload = () => {
-      // Background putih buat QR agar tidak nempel ke pinggir (Safe Area)
       ctx.fillStyle = "white";
       const bgPadding = 8;
       ctx.fillRect(
@@ -142,7 +140,7 @@ export default function Photobooth() {
         qrSize,
       );
 
-      const finalPhoto = canvas.toDataURL("image/png", 1.0); // High Quality
+      const finalPhoto = canvas.toDataURL("image/png", 1.0);
       setPhoto(finalPhoto);
       generateQRBase64(qrText).then((res) => setCurrentQR(res));
     };
@@ -160,6 +158,7 @@ export default function Photobooth() {
     }
   };
 
+  // --- Fixed Print Logic (15.4x10.3) ---
   const handleNativePrint = (img) => {
     saveToGallery(img);
     setStats((prev) => ({ ...prev, printed: prev.printed + 1 }));
@@ -169,26 +168,9 @@ export default function Photobooth() {
       <html>
         <head>
           <style>
-            @page { 
-              size: 6in 4in landscape; 
-              margin: 0mm; /* Paksa margin nol */
-            }
-            html, body { 
-              margin: 0; 
-              padding: 0; 
-              width: 100%; 
-              height: 100%; 
-              overflow: hidden;
-              background-color: white;
-            }
-            img { 
-              /* Menggunakan unit absolut untuk memastikan ukuran 4R di Windows */
-              width: 6in; 
-              height: 4in; 
-              display: block;
-              object-fit: cover;
-              image-rendering: -webkit-optimize-contrast;
-            }
+            @page { size: landscape; margin: 0; }
+            body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: white; }
+            img { width: 15.4cm; height: 10.3cm; object-fit: cover; }
           </style>
         </head>
         <body>
@@ -211,8 +193,6 @@ export default function Photobooth() {
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #eab308; border-radius: 10px; }
         .standard-btn { border-radius: 16px; transition: all 0.2s ease; overflow: hidden; }
-        
-        /* 4R Ratio Helper */
         .aspect-4r { aspect-ratio: 3 / 2; }
       `}</style>
 
@@ -220,12 +200,12 @@ export default function Photobooth() {
       <div class="mb-8 flex justify-between items-center border-b-2 border-yellow-500 pb-4">
         <div class="flex items-center gap-4">
           <Zap size={24} class="text-yellow-500" fill="currentColor" />
-          <h1 class="text-5xl font-black uppercase tracking-tighter italic">
+          <h1 class="text-5xl font-black uppercase tracking-tighter italic leading-none">
             PHOTO{" "}
             <span class="text-yellow-500 font-light">
               BOOTH{" "}
-              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50">
-                4R EDITION
+              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50 tracking-normal font-bold">
+                4R-SYSTEM
               </span>
             </span>
           </h1>
@@ -248,9 +228,17 @@ export default function Photobooth() {
 
       {/* MAIN VIEW */}
       <div class="flex-1 flex gap-10 items-center justify-center min-h-0">
-        {/* VIEWPORT - SET KE 3:2 (4R) */}
+        {/* VIEWPORT - Locked to 3:2 Ratio */}
         <div
-          class={`flex-[3] relative aspect-4r max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${photo() ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]" : "border-white/10"}`}
+          class={`relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${
+            photo()
+              ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]"
+              : "border-white/10"
+          }`}
+          style={{
+            width: "auto", // Lebar mengikuti tinggi agar rasio 3:2 pas
+            "flex-shrink": "0", // Jangan biarkan container ini mengecil secara paksa
+          }}
         >
           <video
             ref={videoRef}
@@ -258,12 +246,18 @@ export default function Photobooth() {
             class={`w-full h-full object-cover ${photo() ? "hidden" : "block"}`}
             style={{ transform: "scaleX(-1)" }}
           />
+
           <Show when={photo()}>
-            <img src={photo()} class="w-full h-full object-cover animate-pop" />
+            <img
+              src={photo()}
+              class="w-full h-full object-cover animate-pop"
+              style={{ transform: "none" }}
+            />
           </Show>
+
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md">
-              <span class="text-[20rem] font-black text-yellow-500 animate-pulse italic">
+              <span class="text-[18rem] font-black text-yellow-500 animate-pulse italic leading-none">
                 {countdown()}
               </span>
             </div>
@@ -271,14 +265,14 @@ export default function Photobooth() {
         </div>
 
         {/* CONTROLS */}
-        <div class="w-72 flex flex-col gap-6 h-full py-4">
+        <div class="w-72 flex flex-col gap-5 h-full py-4">
           <Show
             when={!photo()}
             fallback={
               <>
                 <button
                   onClick={() => setPhoto(null)}
-                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn"
+                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn transition-colors"
                 >
                   <RotateCcw size={40} />
                   <span class="font-black uppercase text-xl italic">
@@ -287,7 +281,7 @@ export default function Photobooth() {
                 </button>
                 <button
                   onClick={() => saveToGallery(photo())}
-                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
+                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn transition-colors"
                 >
                   <Save size={40} />
                   <span class="font-black uppercase text-xl italic text-zinc-600">
@@ -296,10 +290,10 @@ export default function Photobooth() {
                 </button>
                 <button
                   onClick={() => handleNativePrint(photo())}
-                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn"
+                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn transition-colors"
                 >
                   <Printer size={64} />
-                  <span class="font-black uppercase text-3xl italic">
+                  <span class="font-black uppercase text-3xl italic leading-none">
                     Print 4R
                   </span>
                 </button>
@@ -314,7 +308,7 @@ export default function Photobooth() {
                 size={80}
                 class="group-hover:scale-110 transition-transform"
               />
-              <span class="font-black uppercase text-5xl italic tracking-tighter">
+              <span class="font-black uppercase text-5xl italic tracking-tighter leading-none">
                 Capture
               </span>
             </button>
@@ -328,10 +322,7 @@ export default function Photobooth() {
           <div class="w-full max-w-6xl h-full flex flex-col">
             <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4">
               <h2 class="text-4xl font-black italic uppercase">
-                Fleet{" "}
-                <span class="text-yellow-500 font-light tracking-normal">
-                  Archives
-                </span>
+                Fleet <span class="text-yellow-500 font-light">Archives</span>
               </h2>
               <button
                 onClick={() => setShowGallery(false)}
@@ -343,7 +334,7 @@ export default function Photobooth() {
             <div class="flex-1 grid grid-cols-3 gap-8 overflow-y-auto pr-4 custom-scrollbar">
               <For each={gallery()}>
                 {(item) => (
-                  <div class="group relative aspect-video bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl transition-all">
+                  <div class="group relative aspect-4r bg-zinc-900 border-2 border-white/5 hover:border-yellow-500 overflow-hidden shadow-2xl rounded-3xl transition-all">
                     <img
                       src={item.src}
                       class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -372,38 +363,52 @@ export default function Photobooth() {
 
       {/* PREVIEW MODAL */}
       <Show when={previewItem()}>
-        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/95 backdrop-blur-2xl p-12 animate-pop">
-          <div class="relative w-full max-w-5xl aspect-video flex flex-col bg-zinc-900 border-2 border-white/10 shadow-2xl rounded-[40px] overflow-hidden">
-            <div class="flex border-b border-white/10 h-20">
+        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/95 backdrop-blur-2xl p-6 md:p-12 animate-pop">
+          {/* Kunci lebar modal di sini (misal 80vw) supaya nggak berubah pas pindah tab */}
+          <div
+            class="relative flex flex-col bg-zinc-900 border-2 border-white/10 shadow-2xl rounded-[40px] overflow-hidden"
+            style={{ width: "80vw", "max-width": "1200px", height: "auto" }}
+          >
+            {/* TABS HEADER */}
+            <div class="flex border-b border-white/10 h-16 shrink-0">
               <button
                 onClick={() => setActiveTab("photo")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "photo" ? "bg-white text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <ImageIcon size={24} /> Preview Photo
+                <ImageIcon size={20} /> Preview Photo
               </button>
               <button
                 onClick={() => setActiveTab("qr")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <QrCode size={24} /> Preview QR
+                <QrCode size={20} /> Preview QR
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
-                class="px-12 bg-red-600 hover:bg-red-500 transition-colors border-l border-white/10"
+                class="px-10 bg-red-600 hover:bg-red-500 transition-colors border-l border-white/10"
               >
-                <X size={32} />
+                <X size={28} />
               </button>
             </div>
-            <div class="flex-1 flex items-center justify-center p-10 bg-black/50">
+
+            {/* TAB CONTENT - Kunci rasionya di sini supaya area putih/hitamnya sama */}
+            <div class="aspect-[3/2] flex items-center justify-center p-6 bg-black/50 overflow-hidden">
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
-                  class="max-w-full max-h-full object-contain shadow-2xl animate-pop rounded-2xl border-4 border-white/5"
+                  class="w-full h-full object-contain shadow-2xl animate-pop rounded-xl"
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
-                <div class="bg-white p-12 rounded-[48px] shadow-[0_0_60px_rgba(255,255,255,0.1)] animate-pop">
-                  <img src={previewItem().qr} class="w-80 h-80" />
+                {/* QR dibungkus div putih yang tetep proporsional */}
+                <div class="w-full h-full flex items-center justify-center">
+                  <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop">
+                    {/* Ukuran QR dikunci biar nggak menuhin layar tapi tetep gede */}
+                    <img
+                      src={previewItem().qr}
+                      class="w-[300px] h-[300px] md:w-[450px] md:h-[450px]"
+                    />
+                  </div>
                 </div>
               </Show>
             </div>
