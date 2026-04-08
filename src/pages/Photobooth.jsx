@@ -27,9 +27,6 @@ export default function Photobooth() {
   const [previewItem, setPreviewItem] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("photo");
 
-  // State untuk menyimpan QR code yang baru saja digenerate dari respon POST
-  const [lastUploadedQR, setLastUploadedQR] = createSignal("");
-
   let videoRef;
 
   const playAudio = (path) => {
@@ -68,6 +65,22 @@ export default function Photobooth() {
     }
   };
 
+  // --- NEW: Print Toggle API ---
+  const togglePrintStatus = async (isPrinted) => {
+    try {
+      const formData = new FormData();
+      formData.append("is_printed", isPrinted ? "1" : "0");
+
+      await fetch(`${API_BASE}/api/print-toggle`, {
+        method: "POST",
+        body: formData,
+      });
+      await fetchStatistics(); // Refresh angka stats
+    } catch (err) {
+      console.error("Toggle Print Failed:", err);
+    }
+  };
+
   const base64ToBlob = (base64) => {
     const parts = base64.split(";base64,");
     const contentType = parts[0].split(":")[1];
@@ -77,7 +90,6 @@ export default function Photobooth() {
     return new Blob([uInt8Array], { type: contentType });
   };
 
-  // --- UPDATE UPLOAD LOGIC ---
   const uploadPhoto = async (base64) => {
     try {
       const formData = new FormData();
@@ -94,24 +106,13 @@ export default function Photobooth() {
       );
 
       if (res.ok) {
-        const resultUrl = await res.text(); // Ambil respon URL string itu
-        const cleanUrl = resultUrl.replace(/"/g, ""); // Bersihin kutip kalo ada
-
-        // Generate QR Code baru berdasarkan URL respon untuk Preview
-        const newQR = await QRCode.toDataURL(cleanUrl, {
-          width: 1024,
-          margin: 2,
-        });
-        setLastUploadedQR(newQR);
-
-        await fetchStatistics();
         await fetchGallery();
-        return cleanUrl;
+        return true;
       }
     } catch (err) {
       console.error(err);
     }
-    return null;
+    return false;
   };
 
   onMount(() => {
@@ -188,10 +189,7 @@ export default function Photobooth() {
     });
     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
 
-    // --- QR DUMMY PAS CAPTURE (Hanya visual sementara di canvas) ---
-    // Karena URL aslinya baru dapet setelah POST, pas diprint kita tetep tempel QR dummy
-    // atau biarkan kosong jika memang QR-nya murni buat Gallery Online.
-    // Di sini gue tetep kasih QR dummy biar di kertas print ada isinya.
+    // QR DUMMY BUAT DI PRINT
     const qrSize = Math.floor(canvas.height * 0.18);
     const padding = 30;
     const qrDataUrl = await QRCode.toDataURL(
@@ -219,12 +217,14 @@ export default function Photobooth() {
       qrSize,
     );
 
-    const finalPhoto = canvas.toDataURL("image/png", 1.0);
-    setPhoto(finalPhoto);
+    setPhoto(canvas.toDataURL("image/png", 1.0));
     playAudio("/sfx/shutter.mp3");
   };
 
-  const handleNativePrint = (imgUrl) => {
+  const handleNativePrint = (imgUrl, fromGallery = false) => {
+    // 1. Update backend statistik print
+    togglePrintStatus(true);
+
     const win = window.open("", "_blank");
     win.document.write(`
       <html>
@@ -292,10 +292,9 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MAIN VIEW */}
       <div class="flex-1 flex gap-10 items-center justify-center min-h-0">
         <div
-          class={`relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] ${photo() ? "border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.2)]" : "border-white/10"}`}
+          class="relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] border-white/10"
           style={{ width: "auto", "flex-shrink": "0" }}
         >
           <video
@@ -305,7 +304,10 @@ export default function Photobooth() {
             style={{ transform: "scaleX(-1)" }}
           />
           <Show when={photo()}>
-            <img src={photo()} class="w-full h-full object-cover animate-pop" />
+            <img
+              src={photo()}
+              class="w-full h-full object-cover animate-pop border-yellow-500"
+            />
           </Show>
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md">
@@ -316,7 +318,6 @@ export default function Photobooth() {
           </Show>
         </div>
 
-        {/* CONTROLS */}
         <div class="w-72 flex flex-col gap-5 h-full py-4">
           <Show
             when={!photo()}
@@ -334,6 +335,7 @@ export default function Photobooth() {
                 <button
                   onClick={async () => {
                     await uploadPhoto(photo());
+                    await togglePrintStatus(false); // is_printed = 0
                     setPhoto(null);
                   }}
                   class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
@@ -346,7 +348,7 @@ export default function Photobooth() {
                 <button
                   onClick={async () => {
                     const current = photo();
-                    const uploadedUrl = await uploadPhoto(current);
+                    await uploadPhoto(current);
                     handleNativePrint(current);
                     setPhoto(null);
                   }}
@@ -410,7 +412,7 @@ export default function Photobooth() {
                         <Eye size={30} />
                       </button>
                       <button
-                        onClick={() => handleNativePrint(item.src)}
+                        onClick={() => handleNativePrint(item.src, true)}
                         class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 shadow-xl"
                       >
                         <Printer size={30} />
@@ -436,13 +438,13 @@ export default function Photobooth() {
                 onClick={() => setActiveTab("photo")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "photo" ? "bg-white text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <ImageIcon size={20} /> Preview Photo
+                <ImageIcon size={20} /> Photo
               </button>
               <button
                 onClick={() => setActiveTab("qr")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <QrCode size={20} /> Preview QR
+                <QrCode size={20} /> QR Code
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
@@ -455,12 +457,11 @@ export default function Photobooth() {
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
-                  class="w-full h-full object-contain shadow-2xl animate-pop rounded-xl"
+                  class="w-full h-full object-contain animate-pop rounded-xl"
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
                 <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop">
-                  {/* Ambil QR URL dari item Gallery (paths backend) */}
                   <img
                     src={previewItem().qr}
                     class="w-[300px] h-[300px] md:w-[450px] md:h-[450px]"
@@ -487,7 +488,7 @@ export default function Photobooth() {
             </h2>
             <div class="grid grid-cols-2 gap-8 text-center">
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block text-zinc-500">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 block">
                   Total Captured
                 </span>
                 <span class="text-8xl font-black italic leading-none">
@@ -495,7 +496,7 @@ export default function Photobooth() {
                 </span>
               </div>
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block text-zinc-500">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 block">
                   Total Printed
                 </span>
                 <span class="text-8xl font-black italic text-yellow-500 leading-none">
