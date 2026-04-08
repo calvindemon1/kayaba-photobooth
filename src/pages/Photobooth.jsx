@@ -13,7 +13,7 @@ import {
   Image as ImageIcon,
   QrCode,
 } from "lucide-solid";
-import frameImgPath from "../assets/img/frame.png"; // Import frame assets
+import frameImgPath from "../assets/img/frame.png";
 
 export default function Photobooth() {
   const API_BASE = "http://localhost:8000";
@@ -26,7 +26,9 @@ export default function Photobooth() {
   const [stats, setStats] = createSignal({ taken: 0, printed: 0 });
   const [previewItem, setPreviewItem] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("photo");
-  const [currentQR, setCurrentQR] = createSignal("");
+
+  // State untuk menyimpan QR code yang baru saja digenerate dari respon POST
+  const [lastUploadedQR, setLastUploadedQR] = createSignal("");
 
   let videoRef;
 
@@ -55,7 +57,6 @@ export default function Photobooth() {
       const res = await fetch(`${API_BASE}/api/all-photos-and-generated-qrs`);
       const data = await res.json();
       if (data.paths) {
-        // MAPPING DATA AGAR KONSISTEN DENGAN UI
         const mappedGallery = data.paths.map((item) => ({
           src: item.result_photo_url,
           qr: item.qr_code_url,
@@ -76,6 +77,7 @@ export default function Photobooth() {
     return new Blob([uInt8Array], { type: contentType });
   };
 
+  // --- UPDATE UPLOAD LOGIC ---
   const uploadPhoto = async (base64) => {
     try {
       const formData = new FormData();
@@ -92,12 +94,24 @@ export default function Photobooth() {
       );
 
       if (res.ok) {
+        const resultUrl = await res.text(); // Ambil respon URL string itu
+        const cleanUrl = resultUrl.replace(/"/g, ""); // Bersihin kutip kalo ada
+
+        // Generate QR Code baru berdasarkan URL respon untuk Preview
+        const newQR = await QRCode.toDataURL(cleanUrl, {
+          width: 1024,
+          margin: 2,
+        });
+        setLastUploadedQR(newQR);
+
         await fetchStatistics();
         await fetchGallery();
+        return cleanUrl;
       }
     } catch (err) {
       console.error(err);
     }
+    return null;
   };
 
   onMount(() => {
@@ -152,7 +166,6 @@ export default function Photobooth() {
     canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
 
-    // 1. Draw Photo (Mirroring)
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(
@@ -168,7 +181,6 @@ export default function Photobooth() {
     );
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // 2. Draw Frame Overlay
     const frameImg = new Image();
     frameImg.src = frameImgPath;
     await new Promise((resolve) => {
@@ -176,15 +188,16 @@ export default function Photobooth() {
     });
     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
 
-    // 3. Draw QR Watermark
+    // --- QR DUMMY PAS CAPTURE (Hanya visual sementara di canvas) ---
+    // Karena URL aslinya baru dapet setelah POST, pas diprint kita tetep tempel QR dummy
+    // atau biarkan kosong jika memang QR-nya murni buat Gallery Online.
+    // Di sini gue tetep kasih QR dummy biar di kertas print ada isinya.
     const qrSize = Math.floor(canvas.height * 0.18);
     const padding = 30;
-    const qrText = `https://gallery.bydiims2026.com/photo-${Date.now()}`;
-    const qrDataUrl = await QRCode.toDataURL(qrText, {
-      width: qrSize,
-      margin: 1,
-    });
-
+    const qrDataUrl = await QRCode.toDataURL(
+      "https://gallery.bydiims2026.com",
+      { width: qrSize, margin: 1 },
+    );
     const qrImg = new Image();
     qrImg.src = qrDataUrl;
     await new Promise((resolve) => {
@@ -208,13 +221,9 @@ export default function Photobooth() {
 
     const finalPhoto = canvas.toDataURL("image/png", 1.0);
     setPhoto(finalPhoto);
-    QRCode.toDataURL(qrText, { width: 1024, margin: 2 }).then((res) =>
-      setCurrentQR(res),
-    );
     playAudio("/sfx/shutter.mp3");
   };
 
-  // --- FIX PRINT: Nunggu Load & CSS Presisi ---
   const handleNativePrint = (imgUrl) => {
     const win = window.open("", "_blank");
     win.document.write(`
@@ -230,12 +239,7 @@ export default function Photobooth() {
           <img src="${imgUrl}" id="print-img">
           <script>
             const img = document.getElementById('print-img');
-            img.onload = () => {
-              setTimeout(() => {
-                window.print();
-                window.close();
-              }, 500);
-            };
+            img.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
           </script>
         </body>
       </html>
@@ -312,6 +316,7 @@ export default function Photobooth() {
           </Show>
         </div>
 
+        {/* CONTROLS */}
         <div class="w-72 flex flex-col gap-5 h-full py-4">
           <Show
             when={!photo()}
@@ -327,8 +332,8 @@ export default function Photobooth() {
                   </span>
                 </button>
                 <button
-                  onClick={() => {
-                    uploadPhoto(photo());
+                  onClick={async () => {
+                    await uploadPhoto(photo());
                     setPhoto(null);
                   }}
                   class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
@@ -341,7 +346,7 @@ export default function Photobooth() {
                 <button
                   onClick={async () => {
                     const current = photo();
-                    await uploadPhoto(current);
+                    const uploadedUrl = await uploadPhoto(current);
                     handleNativePrint(current);
                     setPhoto(null);
                   }}
@@ -448,7 +453,6 @@ export default function Photobooth() {
             </div>
             <div class="aspect-[3/2] flex items-center justify-center p-6 bg-black/50 overflow-hidden">
               <Show when={activeTab() === "photo"}>
-                {/* PAKAI src DARI MAPPING GALLERY */}
                 <img
                   src={previewItem().src}
                   class="w-full h-full object-contain shadow-2xl animate-pop rounded-xl"
@@ -456,7 +460,7 @@ export default function Photobooth() {
               </Show>
               <Show when={activeTab() === "qr"}>
                 <div class="bg-white p-12 rounded-[40px] shadow-2xl animate-pop">
-                  {/* PAKAI qr DARI MAPPING GALLERY */}
+                  {/* Ambil QR URL dari item Gallery (paths backend) */}
                   <img
                     src={previewItem().qr}
                     class="w-[300px] h-[300px] md:w-[450px] md:h-[450px]"
