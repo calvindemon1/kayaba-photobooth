@@ -17,7 +17,7 @@ import frameImgPath from "../assets/img/frame.png";
 
 export default function Photobooth() {
   const BASE_URL = "http://localhost:8000";
-  const DOWNLOAD_PAGE_URL = "http://localhost:3344/download";
+  const DOWNLOAD_PAGE_URL = "https://lv24k4r6-3344.asse.devtunnels.ms/download";
 
   const [photo, setPhoto] = createSignal(null);
   const [gallery, setGallery] = createSignal([]);
