@@ -381,7 +381,7 @@ export default function Photobooth() {
                 <X size={32} />
               </button>
             </div>
-            <div class="flex-1 grid grid-cols-3 gap-6 overflow-y-auto pr-6 pb-20 custom-scrollbar">
+            <div class="flex-1 grid grid-cols-3 gap-6 overflow-y-auto pr-6 pb-6 custom-scrollbar">
               <Show when={isLoadingGallery()}>
                 <For each={[1, 2, 3, 4, 5, 6]}>
                   {() => (

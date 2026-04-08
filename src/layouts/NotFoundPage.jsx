@@ -40,7 +40,7 @@ export default function NotFoundPage() {
           <div class="h-1 w-24 bg-yellow-500 mx-auto"></div>
           <p class="text-white/50 font-bold max-w-[450px] uppercase text-[10px] tracking-[0.3em] leading-relaxed not-italic">
             Unit out of range. Jalur transmisi yang Anda tuju tidak ditemukan
-            dalam koordinat sistem Isuzu Award.
+            dalam koordinat sistem Kayaba.
           </p>
         </div>
 

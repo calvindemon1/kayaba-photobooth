@@ -18,7 +18,7 @@ export default function DownloadPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `isuzu-photobooth-${Date.now()}.png`;
+      link.download = `kayaba-photobooth-${Date.now()}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -62,7 +62,7 @@ export default function DownloadPage() {
         </button>
 
         <p class="text-center text-zinc-500 text-xs font-bold uppercase tracking-widest mt-4">
-          Isuzu Giga Photobooth System v1.0
+          Kayaba Photobooth
         </p>
       </div>
 
