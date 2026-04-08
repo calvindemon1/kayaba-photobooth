@@ -16,8 +16,8 @@ import {
 import frameImgPath from "../assets/img/frame.png";
 
 export default function Photobooth() {
+  //   const API_BASE = "http://localhost:8000";
   const API_BASE = "https://lv24k4r6-8000.asse.devtunnels.ms";
-  const LOCAL_BASE = "http://localhost:8000";
 
   const [photo, setPhoto] = createSignal(null);
   const [gallery, setGallery] = createSignal([]);
@@ -47,39 +47,28 @@ export default function Photobooth() {
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error("Stats Error:", err);
     }
   };
 
   const fetchGallery = async () => {
     setIsLoadingGallery(true);
     try {
-      // 1. Ambil data LOCAL untuk foto (biar kenceng)
-      const resLocal = await fetch(
-        `${LOCAL_BASE}/api/all-local-photos-and-generated-qrs`,
-      );
-      const dataLocal = await resLocal.json();
+      // Ambil data dari API_BASE (bisa DevTunnel / Localhost)
+      const res = await fetch(`${API_BASE}/api/all-photos-and-generated-qrs`);
+      const data = await res.json();
 
-      // 2. Ambil data CLOUD untuk link QR (biar bisa discan)
-      const resCloud = await fetch(
-        `${API_BASE}/api/all-photos-and-generated-qrs`,
-      );
-      const dataCloud = await resCloud.json();
-
-      if (dataLocal.paths && dataCloud.paths) {
-        // Merge data: foto ambil local, qr ambil cloud
-        const mappedGallery = dataLocal.paths.map((item, index) => ({
-          src: item.result_photo_url.startsWith("http")
-            ? item.result_photo_url
-            : `D:\Globe\Photobooth\back-end\results\photos\result\${item.result_photo_url}`,
-          qr: dataCloud.paths[index]?.qr_code_url || item.qr_code_url,
+      if (data.paths) {
+        const mappedGallery = data.paths.map((item) => ({
+          src: item.result_photo_url,
+          qr: item.qr_code_url,
         }));
         setGallery(mappedGallery);
       }
     } catch (err) {
       console.error("Gallery Fetch Failed", err);
     } finally {
-      setTimeout(() => setIsLoadingGallery(false), 500);
+      setTimeout(() => setIsLoadingGallery(false), 600);
     }
   };
 
@@ -93,7 +82,7 @@ export default function Photobooth() {
       });
       await fetchStatistics();
     } catch (err) {
-      console.error(err);
+      console.error("Print Toggle Error:", err);
     }
   };
 
@@ -127,7 +116,7 @@ export default function Photobooth() {
         return true;
       }
     } catch (err) {
-      console.error(err);
+      console.error("Upload Error:", err);
     }
     return false;
   };
@@ -142,7 +131,7 @@ export default function Photobooth() {
         });
         videoRef.srcObject = s;
       } catch (err) {
-        console.error(err);
+        console.error("Camera Error:", err);
       }
     };
     initCamera();
@@ -170,7 +159,6 @@ export default function Photobooth() {
     const vW = videoRef.videoWidth;
     const vH = videoRef.videoHeight;
     const targetRatio = 3 / 2;
-
     let rW, rH;
     if (vW / vH > targetRatio) {
       rH = vH;
@@ -280,7 +268,7 @@ export default function Photobooth() {
             PHOTO{" "}
             <span class="text-yellow-500 font-light">
               BOOTH{" "}
-              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50 font-bold">
+              <span class="text-xs not-italic bg-white/10 px-2 py-1 rounded ml-2 text-white/50 font-bold tracking-normal">
                 4R-SYSTEM
               </span>
             </span>
@@ -341,7 +329,7 @@ export default function Photobooth() {
               <>
                 <button
                   onClick={() => setPhoto(null)}
-                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn"
+                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn transition-colors"
                 >
                   <RotateCcw size={40} />
                   <span class="font-black uppercase text-xl italic">
@@ -354,7 +342,7 @@ export default function Photobooth() {
                     await togglePrintStatus(false);
                     setPhoto(null);
                   }}
-                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
+                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn transition-colors"
                 >
                   <Save size={40} />
                   <span class="font-black uppercase text-xl italic text-zinc-600">
@@ -368,7 +356,7 @@ export default function Photobooth() {
                     handleNativePrint(current);
                     setPhoto(null);
                   }}
-                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn"
+                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn transition-colors"
                 >
                   <Printer size={64} />
                   <span class="font-black uppercase text-3xl italic leading-none">
@@ -394,12 +382,16 @@ export default function Photobooth() {
         </div>
       </div>
 
+      {/* GALLERY POPUP */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 backdrop-blur-lg p-10 animate-pop">
           <div class="w-full max-w-6xl h-full flex flex-col">
             <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4">
               <h2 class="text-4xl font-black italic uppercase tracking-tighter">
-                Fleet <span class="text-yellow-500 font-light">Archives</span>
+                Fleet{" "}
+                <span class="text-yellow-500 font-light tracking-normal">
+                  Archives
+                </span>
               </h2>
               <button
                 onClick={() => setShowGallery(false)}
@@ -430,13 +422,13 @@ export default function Photobooth() {
                             setPreviewItem(item);
                             setActiveTab("photo");
                           }}
-                          class="bg-white text-black p-5 rounded-full hover:scale-110 shadow-xl"
+                          class="bg-white text-black p-5 rounded-full hover:scale-110 shadow-xl transition-all"
                         >
                           <Eye size={30} />
                         </button>
                         <button
                           onClick={() => handleNativePrint(item.src)}
-                          class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 shadow-xl"
+                          class="bg-yellow-500 text-black p-5 rounded-full hover:scale-110 shadow-xl transition-all"
                         >
                           <Printer size={30} />
                         </button>
@@ -450,6 +442,7 @@ export default function Photobooth() {
         </div>
       </Show>
 
+      {/* PREVIEW MODAL */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/95 backdrop-blur-2xl p-6 md:p-12 animate-pop">
           <div
@@ -461,13 +454,13 @@ export default function Photobooth() {
                 onClick={() => setActiveTab("photo")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "photo" ? "bg-white text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <ImageIcon size={20} /> Photo
+                <ImageIcon size={20} /> Preview Photo
               </button>
               <button
                 onClick={() => setActiveTab("qr")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "hover:bg-white/5 text-white/50"}`}
               >
-                <QrCode size={20} /> QR Code
+                <QrCode size={20} /> Preview QR
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
@@ -496,7 +489,7 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* STATS tetap sama ... */}
+      {/* STATS MODAL */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl animate-pop">
           <div class="w-full max-w-2xl bg-zinc-900 p-12 border-l-8 border-yellow-500 relative shadow-2xl rounded-[32px]">
@@ -506,12 +499,12 @@ export default function Photobooth() {
             >
               <X size={32} />
             </button>
-            <h2 class="text-4xl font-black uppercase italic mb-10 pb-4 border-b border-white/5">
+            <h2 class="text-4xl font-black uppercase italic mb-10 pb-4 border-b border-white/5 tracking-tighter">
               Fleet Telemetry
             </h2>
             <div class="grid grid-cols-2 gap-8 text-center">
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 block">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block">
                   Total Captured
                 </span>
                 <span class="text-8xl font-black italic leading-none">
@@ -519,7 +512,7 @@ export default function Photobooth() {
                 </span>
               </div>
               <div class="bg-black/50 p-10 border border-white/5 rounded-[24px]">
-                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 block">
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 italic block">
                   Total Printed
                 </span>
                 <span class="text-8xl font-black italic text-yellow-500 leading-none">
