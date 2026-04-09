@@ -15,7 +15,7 @@ import {
 
 export default function Photobooth() {
   const BASE_URL = "http://localhost:8000";
-  const DOWNLOAD_PAGE_URL = "https://lv24k4r6-3344.asse.devtunnels.ms/download";
+  const DOWNLOAD_PAGE_URL = "https://b1pr8fpn-3344.asse.devtunnels.ms/download";
 
   const [photo, setPhoto] = createSignal(null);
   const [processedPhoto, setProcessedPhoto] = createSignal(null);
