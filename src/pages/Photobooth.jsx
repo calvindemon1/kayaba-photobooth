@@ -128,24 +128,32 @@ export default function Photobooth() {
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
+      // Hit endpoint confirm dengan body JSON
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json", // Wajib ada biar BE tau ini JSON
+        },
         body: JSON.stringify({
-          option: 1,
+          option: 1, // Format objek yang lu minta
         }),
       });
 
       if (res.ok) {
+        // Ambil path hasil final lewat getresultpath
         const resFinal = await fetch(`${BASE_URL}/getresultpath`);
         const dataFinal = await resFinal.json();
 
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
+          // Set hasil akhir yang sudah ada di folder RESULT
           setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
 
           await fetchStatistics();
           await fetchGallery();
         }
+      } else {
+        console.error("Gagal konfirmasi foto:", res.statusText);
       }
     } catch (err) {
       console.error("Process Photo Error:", err);
