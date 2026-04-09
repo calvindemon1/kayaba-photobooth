@@ -9,6 +9,7 @@ export default defineConfig({
     host: true,
     port: 3344,
   },
+  allowedHosts: ["moments.kayaba50thanniversary.site"],
   build: {
     target: "esnext",
   },

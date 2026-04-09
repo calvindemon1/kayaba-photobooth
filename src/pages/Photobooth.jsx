@@ -51,26 +51,38 @@ export default function Photobooth() {
     }
   };
 
+  // --- FIX GALLERY FETCHING LOGIC ---
   const fetchGallery = async () => {
     setIsLoadingGallery(true);
     try {
-      const [resLocal, resCloud] = await Promise.all([
-        fetch(`${BASE_URL}/api/all-local-photos-and-generated-qrs`),
-        fetch(`${BASE_URL}/api/all-photos-and-generated-qrs`),
-      ]);
+      // Ambil data dari lokal saja karena folder lokal yang jadi patokan utama
+      const resLocal = await fetch(
+        `${BASE_URL}/api/all-local-photos-and-generated-qrs`,
+      );
       const dataLocal = await resLocal.json();
-      const dataCloud = await resCloud.json();
 
-      if (dataLocal.paths && dataCloud.paths) {
-        const mappedGallery = dataLocal.paths.map((item, index) => {
+      if (dataLocal.paths) {
+        const mappedGallery = dataLocal.paths.map((item) => {
+          // Ambil nama file murni (misal: abc.png)
           const fileName = item.result_photo_url.split(/[\\/]/).pop();
-          const cloudPhotoUrl = dataCloud.paths[index]?.result_photo_url || "";
+
+          // Path untuk nampilin di UI Photobooth (pake IP Lokal BE)
+          const localSrc = `${BASE_URL}/photo-result/${fileName}`;
+
+          // Path Cloud untuk di scan QR (URL yang bakal dibuka di HP user)
+          // Kita kirim path '/results/photos/result/abc.png' ke download page
+          const cloudPath = item.result_photo_url;
+          const downloadUrl = `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(cloudPath)}`;
+
           return {
-            src: `${BASE_URL}/photo-result/${fileName}`,
-            downloadUrl: `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(cloudPhotoUrl)}`,
+            src: localSrc,
+            downloadUrl: downloadUrl,
+            createdAt: item.created_at,
           };
         });
-        setGallery(mappedGallery);
+
+        // Urutkan dari yang paling baru (Newest First)
+        setGallery(mappedGallery.reverse());
       }
     } catch (err) {
       console.error("Gallery Error:", err);
@@ -101,18 +113,24 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 2: TAKE PHOTO & GET PREVIEW (DARI FOLDER TEMPORARY) ---
+  const base64ToBlob = (base64) => {
+    const parts = base64.split(";base64,");
+    const contentType = parts[0].split(":")[1];
+    const raw = window.atob(parts[1]);
+    const uInt8Array = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) uInt8Array[i] = raw.charCodeAt(i);
+    return new Blob([uInt8Array], { type: contentType });
+  };
+
   const handleCapture = async () => {
     try {
       await fetch(`${BASE_URL}/takephoto-landscape`);
-
       const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
       const dataPreview = await resPreview.json();
 
       if (dataPreview.photo) {
         const fileName = dataPreview.photo.split(/[\\/]/).pop();
-        // CACHE BUSTER: Tambahin ?t= biar browser nggak nge-cache 'temp_photo.png'
-        const freshUrl = `${BASE_URL}/photo-preview/${fileName}?t=${Date.now()}`;
+        const freshUrl = `${BASE_URL}/photo-temporary/${fileName}?t=${Date.now()}`;
         setPhoto(freshUrl);
         playAudio("/sfx/shutter.mp3");
       }
@@ -121,7 +139,6 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 3: CONFIRM PHOTO (YES) -> PINDAH KE FOLDER RESULT ---
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
@@ -139,11 +156,9 @@ export default function Photobooth() {
 
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
-          // CACHE BUSTER juga di hasil final biar aman
           setProcessedPhoto(
             `${BASE_URL}/photo-result/${fileName}?t=${Date.now()}`,
           );
-
           await fetchStatistics();
           await fetchGallery();
         }
@@ -207,7 +222,7 @@ export default function Photobooth() {
   };
 
   return (
-    <div class="fixed inset-0 w-full h-full bg-black overflow-hidden flex flex-col text-white select-none p-4 italic">
+    <div class="fixed inset-0 w-full h-full bg-black overflow-hidden flex flex-col text-white select-none p-4 italic font-sans">
       <style>{`
         @keyframes popUp { 0% { opacity: 0; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1); } }
         .animate-pop { animation: popUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -258,7 +273,6 @@ export default function Photobooth() {
       {/* MAIN CONTENT */}
       <div class="flex-1 flex flex-col gap-10 items-center justify-center min-h-0">
         <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[60px] border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
-          {/* STEP 1: STREAM DARI BACKEND (Gue kasih cache buster juga di sini) */}
           <Show when={!photo() && !processedPhoto()}>
             <img
               src={`${BASE_URL}/stream-landscape?t=${Date.now()}`}
@@ -267,20 +281,18 @@ export default function Photobooth() {
             />
           </Show>
 
-          {/* STEP 2: PREVIEW DARI FOLDER TEMPORARY */}
           <Show when={photo() && !processedPhoto()}>
             <img src={photo()} class="w-full h-full object-cover animate-pop" />
             <Show when={isProcessing()}>
               <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6 backdrop-blur-xl">
                 <span class="loader"></span>
                 <span class="font-black uppercase italic text-yellow-500 tracking-[0.3em] animate-pulse text-3xl">
-                  Finalizing Moment...
+                  Processing Final...
                 </span>
               </div>
             </Show>
           </Show>
 
-          {/* STEP 3: HASIL DARI FOLDER RESULT */}
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
@@ -291,7 +303,6 @@ export default function Photobooth() {
             </div>
           </Show>
 
-          {/* COUNTDOWN */}
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-50">
               <span class="text-[20rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]">
@@ -301,7 +312,6 @@ export default function Photobooth() {
           </Show>
         </div>
 
-        {/* CONTROLS */}
         <div class="w-full max-w-[700px] h-40 flex gap-8 shrink-0 pb-4">
           <Switch>
             <Match when={!photo() && !processedPhoto()}>
@@ -315,7 +325,6 @@ export default function Photobooth() {
                 </span>
               </button>
             </Match>
-
             <Match when={photo() && !processedPhoto()}>
               <div class="flex-1 flex gap-6">
                 <button
@@ -338,7 +347,6 @@ export default function Photobooth() {
                 </button>
               </div>
             </Match>
-
             <Match when={processedPhoto()}>
               <div class="flex-1 flex gap-6 animate-pop">
                 <button
@@ -365,7 +373,7 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MODALS (Archive, Preview, Stats) - Tetap rapih scrollable */}
+      {/* GALLERY MODAL - FIXED SCROLLING & MAPPING */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
           <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
@@ -419,6 +427,7 @@ export default function Photobooth() {
               </For>
             </div>
           </div>
+          <div class="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black to-transparent pointer-events-none"></div>
         </div>
       </Show>
 
@@ -426,12 +435,12 @@ export default function Photobooth() {
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-10 animate-pop">
           <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[80px] overflow-hidden w-full max-w-[1000px] shadow-[0_0_120px_rgba(0,0,0,1)]">
-            <div class="flex border-b-2 border-white/10 h-24 bg-zinc-900">
+            <div class="flex border-b-2 border-white/10 h-24 bg-zinc-900 text-2xl">
               <button
                 onClick={() => setActiveTab("photo")}
-                class={`flex-1 font-black uppercase italic text-2xl ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
+                class={`flex-1 font-black uppercase italic ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
               >
-                Photo
+                View Photo
               </button>
               <button
                 onClick={() => {
@@ -441,9 +450,9 @@ export default function Photobooth() {
                     50,
                   );
                 }}
-                class={`flex-1 font-black uppercase italic text-2xl ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
+                class={`flex-1 font-black uppercase italic ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
               >
-                QR Code
+                Get QR Code
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
@@ -462,7 +471,7 @@ export default function Photobooth() {
               <Show when={activeTab() === "qr"}>
                 <div class="bg-white p-12 rounded-[60px] flex flex-col items-center gap-10 shadow-2xl scale-125">
                   <canvas ref={qrCanvasRef}></canvas>
-                  <p class="text-black font-black text-center uppercase text-xl">
+                  <p class="text-black font-black text-center uppercase text-xl tracking-tight">
                     Scan for Download
                   </p>
                 </div>
@@ -475,28 +484,28 @@ export default function Photobooth() {
       {/* STATS MODAL */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 p-10 animate-pop">
-          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-2xl">
+          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
             <button
               onClick={() => setShowStats(false)}
               class="absolute top-12 right-12 text-white/30 hover:text-white transition-all"
             >
               <X size={60} />
             </button>
-            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8">
+            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8 tracking-tighter">
               Telemetry
             </h2>
             <div class="flex flex-col gap-12 text-center">
               <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
                 <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Captured
+                  Total Captures
                 </span>
-                <span class="text-[12rem] font-black italic text-white leading-none">
+                <span class="text-[12rem] font-black italic tracking-tighter text-white leading-none">
                   {stats().taken}
                 </span>
               </div>
               <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
                 <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Printed
+                  Total Printed
                 </span>
                 <span class="text-[12rem] font-black italic text-yellow-500 leading-none">
                   {stats().printed}
