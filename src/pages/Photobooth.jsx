@@ -1,13 +1,4 @@
-import {
-  createSignal,
-  onMount,
-  Show,
-  For,
-  createEffect,
-  on,
-  Switch,
-  Match,
-} from "solid-js";
+import { createSignal, onMount, Show, For, Switch, Match } from "solid-js";
 import QRCode from "qrcode";
 import {
   Camera,
@@ -17,7 +8,6 @@ import {
   BarChart3,
   X,
   Zap,
-  Save,
   Eye,
   Image as ImageIcon,
   QrCode as QrIcon,
@@ -197,7 +187,7 @@ export default function Photobooth() {
     const canvas = document.createElement("canvas");
     const vW = videoRef.videoWidth;
     const vH = videoRef.videoHeight;
-    const targetRatio = 3 / 2; // BALIK KE LANDSCAPE
+    const targetRatio = 3 / 2;
 
     let rW, rH;
     if (vW / vH > targetRatio) {
@@ -211,6 +201,8 @@ export default function Photobooth() {
     canvas.width = Math.floor(rW);
     canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
+
+    // NORMAL DRAW (No Mirroring)
     ctx.drawImage(
       videoRef,
       (vW - rW) / 2,
@@ -262,50 +254,54 @@ export default function Photobooth() {
       <style>{`
         @keyframes popUp { 0% { opacity: 0; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1); } }
         .animate-pop { animation: popUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
-        .standard-btn { border-radius: 30px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
+        .standard-btn { border-radius: 40px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
         .standard-btn:active { transform: scale(0.95); }
         .loader { width: 64px; height: 64px; border: 8px solid #FFF; border-bottom-color: #eab308; border-radius: 50%; animation: rotation 1s linear infinite; }
         @keyframes rotation { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
+        .custom-scrollbar::-webkit-scrollbar { width: 12px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 20px; border: 3px solid black; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #eab308; }
       `}</style>
 
       {/* HEADER */}
-      <div class="shrink-0 flex justify-between items-center border-b-4 border-yellow-500 pb-4 mb-4">
-        <div class="flex items-center gap-4">
+      <div class="shrink-0 flex justify-between items-center border-b-4 border-yellow-500 pb-6 mb-6">
+        <div class="flex items-center gap-6">
           <Zap
-            size={32}
+            size={48}
             class="text-yellow-500 animate-pulse"
             fill="currentColor"
           />
-          <h1 class="text-5xl font-black uppercase tracking-tighter italic leading-none">
+          <h1 class="text-6xl font-black uppercase tracking-tighter italic leading-none">
             PHOTO <span class="text-yellow-500 font-light">BOOTH</span>
           </h1>
         </div>
-        <div class="flex gap-4">
+        <div class="flex gap-6">
           <button
             onClick={() => {
               fetchStatistics();
               setShowStats(true);
             }}
-            class="bg-zinc-900 p-5 border-2 border-white/10 standard-btn hover:border-yellow-500"
+            class="bg-zinc-900 p-6 border-2 border-white/10 standard-btn hover:border-yellow-500"
           >
-            <BarChart3 size={32} />
+            <BarChart3 size={40} />
           </button>
           <button
             onClick={() => {
               fetchGallery();
               setShowGallery(true);
             }}
-            class="bg-zinc-900 p-5 border-2 border-white/10 standard-btn hover:border-yellow-500"
+            class="bg-zinc-900 p-6 border-2 border-white/10 standard-btn hover:border-yellow-500"
           >
-            <LayoutGrid size={32} />
+            <LayoutGrid size={40} />
           </button>
         </div>
       </div>
 
-      {/* MAIN LAYOUT (STAY PORTRAIT BUT CONTENT IS LANDSCAPE) */}
-      <div class="flex-1 flex flex-col gap-8 items-center justify-center min-h-0">
-        {/* PREVIEW CONTAINER (SINKRON KE LANDSCAPE 3:2) */}
-        <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[50px] border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+      {/* MAIN CONTENT */}
+      <div class="flex-1 flex flex-col gap-10 items-center justify-center min-h-0">
+        {/* PREVIEW CONTAINER (LANDSCAPE ASPECT) */}
+        <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[60px] border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
           <video
             ref={videoRef}
             autoplay
@@ -317,7 +313,7 @@ export default function Photobooth() {
             <Show when={isProcessing()}>
               <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6 backdrop-blur-xl">
                 <span class="loader"></span>
-                <span class="font-black uppercase italic text-yellow-500 tracking-[0.2em] animate-pulse text-2xl">
+                <span class="font-black uppercase italic text-yellow-500 tracking-[0.3em] animate-pulse text-3xl">
                   Processing...
                 </span>
               </div>
@@ -329,14 +325,14 @@ export default function Photobooth() {
               src={processedPhoto()}
               class="w-full h-full object-cover animate-pop"
             />
-            <div class="absolute top-10 left-10 bg-green-500 text-black font-black px-8 py-3 rounded-full text-xl uppercase italic animate-bounce shadow-2xl border-4 border-black">
+            <div class="absolute top-12 left-12 bg-green-500 text-black font-black px-10 py-4 rounded-full text-2xl uppercase italic animate-bounce shadow-2xl border-4 border-black">
               READY!
             </div>
           </Show>
 
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-              <span class="text-[18rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_30px_rgba(234,179,8,0.5)]">
+              <span class="text-[20rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]">
                 {countdown()}
               </span>
             </div>
@@ -344,37 +340,37 @@ export default function Photobooth() {
         </div>
 
         {/* CONTROLS */}
-        <div class="w-full max-w-[600px] h-36 flex gap-6 shrink-0 pb-2">
+        <div class="w-full max-w-[700px] h-40 flex gap-8 shrink-0 pb-4">
           <Switch>
             <Match when={!photo() && !processedPhoto()}>
               <button
                 onClick={startCapture}
-                class="flex-1 bg-white text-black flex items-center justify-center gap-6 border-b-[12px] border-zinc-400 standard-btn hover:bg-yellow-500 hover:border-yellow-700 transition-all"
+                class="flex-1 bg-white text-black flex items-center justify-center gap-8 border-b-[16px] border-zinc-400 standard-btn hover:bg-yellow-500 hover:border-yellow-700 transition-all"
               >
-                <Camera size={60} />
-                <span class="font-black uppercase text-5xl italic tracking-tighter">
+                <Camera size={80} />
+                <span class="font-black uppercase text-6xl italic tracking-tighter">
                   Capture
                 </span>
               </button>
             </Match>
 
             <Match when={photo() && !processedPhoto()}>
-              <div class="flex-1 flex gap-4">
+              <div class="flex-1 flex gap-6">
                 <button
                   onClick={handleUsePhoto}
                   disabled={isProcessing()}
-                  class="flex-[2] bg-yellow-500 text-black flex items-center justify-center gap-4 border-b-[12px] border-yellow-700 standard-btn shadow-2xl"
+                  class="flex-[2] bg-yellow-500 text-black flex items-center justify-center gap-6 border-b-[16px] border-yellow-700 standard-btn shadow-2xl"
                 >
-                  <Check size={50} />
-                  <span class="font-black uppercase text-4xl italic">YES</span>
+                  <Check size={60} />
+                  <span class="font-black uppercase text-5xl italic">YES</span>
                 </button>
                 <button
                   onClick={resetCapture}
                   disabled={isProcessing()}
-                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-4 border-b-[12px] border-red-900 standard-btn"
+                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[16px] border-red-900 standard-btn"
                 >
-                  <Trash2 size={32} class="text-red-500" />
-                  <span class="font-black uppercase text-xl italic">
+                  <Trash2 size={40} class="text-red-500" />
+                  <span class="font-black uppercase text-2xl italic">
                     RETAKE
                   </span>
                 </button>
@@ -382,22 +378,22 @@ export default function Photobooth() {
             </Match>
 
             <Match when={processedPhoto()}>
-              <div class="flex-1 flex gap-4 animate-pop">
+              <div class="flex-1 flex gap-6 animate-pop">
                 <button
                   onClick={() => handleNativePrint(processedPhoto())}
-                  class="flex-[2.5] bg-yellow-500 text-black flex items-center justify-center gap-6 border-b-[12px] border-yellow-700 standard-btn shadow-[0_0_40px_rgba(234,179,8,0.4)]"
+                  class="flex-[2.5] bg-yellow-500 text-black flex items-center justify-center gap-8 border-b-[16px] border-yellow-700 standard-btn shadow-[0_0_50px_rgba(234,179,8,0.5)]"
                 >
-                  <Printer size={60} />
-                  <span class="font-black uppercase text-4xl italic">
-                    PRINT NOW
+                  <Printer size={80} />
+                  <span class="font-black uppercase text-5xl italic">
+                    PRINT
                   </span>
                 </button>
                 <button
                   onClick={resetCapture}
-                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-4 border-b-[12px] border-zinc-600 standard-btn"
+                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[16px] border-zinc-600 standard-btn"
                 >
-                  <RotateCcw size={40} />
-                  <span class="font-black uppercase text-2xl italic text-zinc-400">
+                  <RotateCcw size={50} />
+                  <span class="font-black uppercase text-3xl italic text-zinc-400">
                     NEW
                   </span>
                 </button>
@@ -407,60 +403,73 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MODALS (Archives, Preview, Stats) disesuaikan agar item gallery tetap Landscape */}
+      {/* GALLERY MODAL */}
       <Show when={showGallery()}>
-        <div class="fixed inset-0 z-[100] flex flex-col bg-black/98 backdrop-blur-2xl p-8 animate-pop">
-          <div class="flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-6">
-            <h2 class="text-5xl font-black italic uppercase text-white tracking-tighter">
-              Archives
-            </h2>
+        <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
+          <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
+            <div class="flex flex-col">
+              <h2 class="text-6xl font-black italic uppercase text-white tracking-tighter leading-none">
+                Archives
+              </h2>
+              <span class="text-yellow-500 font-bold text-xl mt-3 uppercase tracking-[0.2em]">
+                {gallery().length} Moments Recorded
+              </span>
+            </div>
             <button
               onClick={() => setShowGallery(false)}
-              class="bg-zinc-800 p-6 rounded-3xl hover:text-red-500 transition-all"
+              class="bg-zinc-800 p-8 rounded-[40px] hover:bg-red-600 transition-all group"
             >
-              <X size={48} />
+              <X
+                size={60}
+                class="group-hover:rotate-90 transition-transform duration-300"
+              />
             </button>
           </div>
-          <div class="flex-1 grid grid-cols-2 gap-8 overflow-y-auto pb-20 custom-scrollbar">
-            <For each={gallery()}>
-              {(item) => (
-                <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/10 rounded-[50px] overflow-hidden shadow-2xl">
-                  <img
-                    src={item.src}
-                    class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  />
-                  <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-12 backdrop-blur-md">
-                    <button
-                      onClick={() => {
-                        setPreviewItem(item);
-                        setActiveTab("photo");
-                      }}
-                      class="bg-white text-black p-8 rounded-full hover:scale-110 transition-transform"
-                    >
-                      <Eye size={48} />
-                    </button>
-                    <button
-                      onClick={() => handleNativePrint(item.src)}
-                      class="bg-yellow-500 text-black p-8 rounded-full hover:scale-110 transition-transform"
-                    >
-                      <Printer size={48} />
-                    </button>
+
+          <div class="flex-1 overflow-y-auto pr-6 custom-scrollbar">
+            <div class="grid grid-cols-2 gap-10 pb-32">
+              <For each={gallery()}>
+                {(item) => (
+                  <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden shadow-2xl transition-all duration-300 hover:border-yellow-500">
+                    <img
+                      src={item.src}
+                      class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                    <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300 gap-16 backdrop-blur-md">
+                      <button
+                        onClick={() => {
+                          setPreviewItem(item);
+                          setActiveTab("photo");
+                        }}
+                        class="bg-white text-black p-10 rounded-full hover:scale-110 active:scale-95 transition-transform shadow-2xl"
+                      >
+                        <Eye size={60} />
+                      </button>
+                      <button
+                        onClick={() => handleNativePrint(item.src)}
+                        class="bg-yellow-500 text-black p-10 rounded-full hover:scale-110 active:scale-95 transition-transform shadow-2xl"
+                      >
+                        <Printer size={60} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </For>
+                )}
+              </For>
+            </div>
           </div>
+          <div class="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black to-transparent pointer-events-none"></div>
         </div>
       </Show>
 
       {/* PREVIEW MODAL */}
       <Show when={previewItem()}>
-        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-8 animate-pop">
-          <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden w-full max-w-[900px] shadow-[0_0_100px_rgba(0,0,0,0.8)]">
-            <div class="flex border-b-2 border-white/10 h-20 bg-zinc-900">
+        <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-10 animate-pop">
+          <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[80px] overflow-hidden w-full max-w-[1000px] shadow-[0_0_120px_rgba(0,0,0,1)]">
+            <div class="flex border-b-2 border-white/10 h-24 bg-zinc-900 text-2xl">
               <button
                 onClick={() => setActiveTab("photo")}
-                class={`flex-1 font-black uppercase italic text-xl ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
+                class={`flex-1 font-black uppercase italic ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
               >
                 View Photo
               </button>
@@ -472,29 +481,29 @@ export default function Photobooth() {
                     50,
                   );
                 }}
-                class={`flex-1 font-black uppercase italic text-xl ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
+                class={`flex-1 font-black uppercase italic ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
               >
-                Get QR
+                Get QR Code
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
-                class="px-10 bg-red-600 text-white hover:bg-red-500"
+                class="px-16 bg-red-600 text-white hover:bg-red-500"
               >
-                <X size={32} />
+                <X size={48} />
               </button>
             </div>
-            <div class="aspect-[3/2] flex items-center justify-center p-8 bg-black/30">
+            <div class="aspect-[3/2] flex items-center justify-center p-12 bg-black/30">
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
-                  class="w-full h-full object-contain rounded-3xl shadow-2xl animate-pop"
+                  class="w-full h-full object-contain rounded-[40px] shadow-2xl animate-pop"
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
-                <div class="bg-white p-10 rounded-[50px] flex flex-col items-center gap-8 shadow-2xl scale-110">
+                <div class="bg-white p-12 rounded-[60px] flex flex-col items-center gap-10 shadow-2xl scale-125">
                   <canvas ref={qrCanvasRef}></canvas>
-                  <p class="text-black font-black text-center uppercase text-lg tracking-tight">
-                    Scan for Mobile Download
+                  <p class="text-black font-black text-center uppercase text-xl tracking-tight">
+                    Scan for Download
                   </p>
                 </div>
               </Show>
@@ -503,33 +512,33 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* TELEMETRY */}
+      {/* STATS MODAL */}
       <Show when={showStats()}>
-        <div class="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-8 animate-pop">
-          <div class="w-full max-w-xl bg-zinc-900 p-16 border-l-[16px] border-yellow-500 rounded-[50px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
+        <div class="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 p-10 animate-pop">
+          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
             <button
               onClick={() => setShowStats(false)}
-              class="absolute top-10 right-10 text-white/30 hover:text-white"
+              class="absolute top-12 right-12 text-white/30 hover:text-white transition-all"
             >
-              <X size={48} />
+              <X size={60} />
             </button>
-            <h2 class="text-5xl font-black uppercase italic mb-12 text-white border-b-2 border-white/10 pb-6 tracking-tighter">
+            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8 tracking-tighter">
               Telemetry
             </h2>
-            <div class="flex flex-col gap-8 text-center">
-              <div class="bg-black/50 p-10 rounded-[40px] border-2 border-white/5">
-                <span class="text-xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Captured
+            <div class="flex flex-col gap-12 text-center">
+              <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
+                <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
+                  Total Captures
                 </span>
-                <span class="text-9xl font-black italic tracking-tighter text-white">
+                <span class="text-[12rem] font-black italic tracking-tighter text-white leading-none">
                   {stats().taken}
                 </span>
               </div>
-              <div class="bg-black/50 p-10 rounded-[40px] border-2 border-white/5">
-                <span class="text-xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Printed
+              <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
+                <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
+                  Total Printed
                 </span>
-                <span class="text-9xl font-black italic text-yellow-500">
+                <span class="text-[12rem] font-black italic text-yellow-500 leading-none">
                   {stats().printed}
                 </span>
               </div>
