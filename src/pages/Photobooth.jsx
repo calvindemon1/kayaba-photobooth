@@ -135,7 +135,7 @@ export default function Photobooth() {
 
       if (res.ok) {
         // 2. Ambil foto terakhir yang sudah diproses QR oleh backend
-        const resPreview = await fetch(`${BASE_URL}/api/getpreviewpath`);
+        const resPreview = await fetch(`${BASE_URL}/getresultpath`);
         const dataPreview = await resPreview.json();
 
         if (dataPreview.path) {
