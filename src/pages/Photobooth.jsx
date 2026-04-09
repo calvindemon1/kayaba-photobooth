@@ -166,7 +166,7 @@ export default function Photobooth() {
     const initCamera = async () => {
       try {
         const s = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1080, height: 1920 },
+          video: { width: 1920, height: 1080 },
         });
         videoRef.srcObject = s;
       } catch (err) {
@@ -197,7 +197,7 @@ export default function Photobooth() {
     const canvas = document.createElement("canvas");
     const vW = videoRef.videoWidth;
     const vH = videoRef.videoHeight;
-    const targetRatio = 2 / 3;
+    const targetRatio = 3 / 2; // BALIK KE LANDSCAPE
 
     let rW, rH;
     if (vW / vH > targetRatio) {
@@ -211,8 +211,6 @@ export default function Photobooth() {
     canvas.width = Math.floor(rW);
     canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
-
-    // UN-MIRROR LOGIC: Kita gambar normal (tanpa scale -1)
     ctx.drawImage(
       videoRef,
       (vW - rW) / 2,
@@ -243,9 +241,9 @@ export default function Photobooth() {
       <html>
         <head>
           <style>
-            @page { size: 10.3cm 15.4cm portrait; margin: 0; }
+            @page { size: 15.4cm 10.3cm landscape; margin: 0; }
             body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: white; }
-            img { width: 10.3cm; height: 15.4cm; object-fit: cover; }
+            img { width: 15.4cm; height: 10.3cm; object-fit: cover; }
           </style>
         </head>
         <body>
@@ -304,10 +302,10 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MAIN LAYOUT */}
-      <div class="flex-1 flex flex-col gap-4 items-center justify-center min-h-0">
-        <div class="relative aspect-[2/3] h-full max-h-[85vh] bg-zinc-900 border-4 overflow-hidden rounded-[50px] border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-          {/* VIDEO NORMAL (Un-mirror) */}
+      {/* MAIN LAYOUT (STAY PORTRAIT BUT CONTENT IS LANDSCAPE) */}
+      <div class="flex-1 flex flex-col gap-8 items-center justify-center min-h-0">
+        {/* PREVIEW CONTAINER (SINKRON KE LANDSCAPE 3:2) */}
+        <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[50px] border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
           <video
             ref={videoRef}
             autoplay
@@ -346,7 +344,7 @@ export default function Photobooth() {
         </div>
 
         {/* CONTROLS */}
-        <div class="w-full max-w-[500px] h-36 flex gap-6 shrink-0 pb-2">
+        <div class="w-full max-w-[600px] h-36 flex gap-6 shrink-0 pb-2">
           <Switch>
             <Match when={!photo() && !processedPhoto()}>
               <button
@@ -409,7 +407,7 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MODALS (Archive, Preview, Stats tetep sama) */}
+      {/* MODALS (Archives, Preview, Stats) disesuaikan agar item gallery tetap Landscape */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[100] flex flex-col bg-black/98 backdrop-blur-2xl p-8 animate-pop">
           <div class="flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-6">
@@ -426,12 +424,12 @@ export default function Photobooth() {
           <div class="flex-1 grid grid-cols-2 gap-8 overflow-y-auto pb-20 custom-scrollbar">
             <For each={gallery()}>
               {(item) => (
-                <div class="group relative aspect-[2/3] bg-zinc-900 border-2 border-white/10 rounded-[50px] overflow-hidden shadow-2xl">
+                <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/10 rounded-[50px] overflow-hidden shadow-2xl">
                   <img
                     src={item.src}
                     class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
-                  <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity gap-8 backdrop-blur-md">
+                  <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-12 backdrop-blur-md">
                     <button
                       onClick={() => {
                         setPreviewItem(item);
@@ -455,9 +453,10 @@ export default function Photobooth() {
         </div>
       </Show>
 
+      {/* PREVIEW MODAL */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-8 animate-pop">
-          <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden w-full max-w-[550px] shadow-[0_0_100px_rgba(0,0,0,0.8)]">
+          <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden w-full max-w-[900px] shadow-[0_0_100px_rgba(0,0,0,0.8)]">
             <div class="flex border-b-2 border-white/10 h-20 bg-zinc-900">
               <button
                 onClick={() => setActiveTab("photo")}
@@ -484,7 +483,7 @@ export default function Photobooth() {
                 <X size={32} />
               </button>
             </div>
-            <div class="aspect-[2/3] flex items-center justify-center p-8 bg-black/30">
+            <div class="aspect-[3/2] flex items-center justify-center p-8 bg-black/30">
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
@@ -504,6 +503,7 @@ export default function Photobooth() {
         </div>
       </Show>
 
+      {/* TELEMETRY */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-8 animate-pop">
           <div class="w-full max-w-xl bg-zinc-900 p-16 border-l-[16px] border-yellow-500 rounded-[50px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
@@ -519,17 +519,17 @@ export default function Photobooth() {
             <div class="flex flex-col gap-8 text-center">
               <div class="bg-black/50 p-10 rounded-[40px] border-2 border-white/5">
                 <span class="text-xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Total Captured
+                  Captured
                 </span>
-                <span class="text-9xl font-black italic tracking-tighter text-white drop-shadow-lg">
+                <span class="text-9xl font-black italic tracking-tighter text-white">
                   {stats().taken}
                 </span>
               </div>
               <div class="bg-black/50 p-10 rounded-[40px] border-2 border-white/5">
                 <span class="text-xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Total Printed
+                  Printed
                 </span>
-                <span class="text-9xl font-black italic text-yellow-500 drop-shadow-lg">
+                <span class="text-9xl font-black italic text-yellow-500">
                   {stats().printed}
                 </span>
               </div>
