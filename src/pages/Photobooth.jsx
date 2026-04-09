@@ -112,7 +112,7 @@ export default function Photobooth() {
       if (dataPreview.photo) {
         const fileName = dataPreview.photo.split(/[\\/]/).pop();
         // CACHE BUSTER: Tambahin ?t= biar browser nggak nge-cache 'temp_photo.png'
-        const freshUrl = `${BASE_URL}/photo-temporary/${fileName}?t=${Date.now()}`;
+        const freshUrl = `${BASE_URL}/photo-preview/${fileName}?t=${Date.now()}`;
         setPhoto(freshUrl);
         playAudio("/sfx/shutter.mp3");
       }
