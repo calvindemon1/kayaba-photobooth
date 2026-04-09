@@ -107,7 +107,7 @@ export default function Photobooth() {
   const handleCapture = async () => {
     try {
       // 1. Trigger Take Photo di BE
-      await fetch(`${BASE_URL}/take-photo-landscape`);
+      await fetch(`${BASE_URL}/takephoto-landscape`);
 
       // 2. Ambil Path Preview
       const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
