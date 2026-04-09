@@ -128,13 +128,11 @@ export default function Photobooth() {
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
-      // Bikin FormData
-      const formData = new FormData();
-      formData.append("option", "1"); // <--- Tambahan option di sini
-
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
-        body: formData,
+        body: JSON.stringify({
+          option: 1,
+        }),
       });
 
       if (res.ok) {
