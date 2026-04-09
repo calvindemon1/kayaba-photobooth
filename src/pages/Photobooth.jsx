@@ -9,8 +9,6 @@ import {
   X,
   Zap,
   Eye,
-  Image as ImageIcon,
-  QrCode as QrIcon,
   Check,
   Trash2,
 } from "lucide-solid";
@@ -103,20 +101,19 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 2: TAKE PHOTO & GET PREVIEW ---
+  // --- STEP 2: TAKE PHOTO & GET PREVIEW (DARI FOLDER TEMPORARY) ---
   const handleCapture = async () => {
     try {
-      // 1. Trigger Take Photo di BE
       await fetch(`${BASE_URL}/takephoto-landscape`);
 
-      // 2. Ambil Path Preview
       const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
       const dataPreview = await resPreview.json();
 
       if (dataPreview.photo) {
         const fileName = dataPreview.photo.split(/[\\/]/).pop();
-        // Set photo untuk masuk ke step "Use this photo?"
-        setPhoto(`${BASE_URL}/photo-preview/${fileName}`);
+        // CACHE BUSTER: Tambahin ?t= biar browser nggak nge-cache 'temp_photo.png'
+        const freshUrl = `${BASE_URL}/photo-temporary/${fileName}?t=${Date.now()}`;
+        setPhoto(freshUrl);
         playAudio("/sfx/shutter.mp3");
       }
     } catch (err) {
@@ -124,38 +121,32 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 3: CONFIRM PHOTO (YES) ---
+  // --- STEP 3: CONFIRM PHOTO (YES) -> PINDAH KE FOLDER RESULT ---
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
-      // 1. Buat objek FormData
       const formData = new FormData();
-
-      // 2. Tambahkan key sesuai screenshot: framing_option_int
-      // Value '0' artinya no framing sesuai deskripsi di foto lu
       formData.append("framing_option_int", "0");
 
-      // 3. Hit endpoint konfirmasi
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
-        body: formData, // Langsung lempar formData sebagai body
+        body: formData,
       });
 
       if (res.ok) {
-        // Ambil path hasil final lewat getresultpath
         const resFinal = await fetch(`${BASE_URL}/getresultpath`);
         const dataFinal = await resFinal.json();
 
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
-          // Set hasil akhir (folder RESULT)
-          setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
+          // CACHE BUSTER juga di hasil final biar aman
+          setProcessedPhoto(
+            `${BASE_URL}/photo-result/${fileName}?t=${Date.now()}`,
+          );
 
           await fetchStatistics();
           await fetchGallery();
         }
-      } else {
-        console.error("Gagal konfirmasi foto via form-data");
       }
     } catch (err) {
       console.error("Process Photo Error:", err);
@@ -266,31 +257,30 @@ export default function Photobooth() {
 
       {/* MAIN CONTENT */}
       <div class="flex-1 flex flex-col gap-10 items-center justify-center min-h-0">
-        {/* PREVIEW CONTAINER */}
         <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[60px] border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
-          {/* STEP 1: STREAM DARI BACKEND */}
+          {/* STEP 1: STREAM DARI BACKEND (Gue kasih cache buster juga di sini) */}
           <Show when={!photo() && !processedPhoto()}>
             <img
-              src={`${BASE_URL}/stream-landscape`}
+              src={`${BASE_URL}/stream-landscape?t=${Date.now()}`}
               class="w-full h-full object-cover"
               alt="Live Stream"
             />
           </Show>
 
-          {/* STEP 2: PREVIEW PHOTO (SETELAH TAKE) */}
+          {/* STEP 2: PREVIEW DARI FOLDER TEMPORARY */}
           <Show when={photo() && !processedPhoto()}>
             <img src={photo()} class="w-full h-full object-cover animate-pop" />
             <Show when={isProcessing()}>
               <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6 backdrop-blur-xl">
                 <span class="loader"></span>
                 <span class="font-black uppercase italic text-yellow-500 tracking-[0.3em] animate-pulse text-3xl">
-                  Processing Final...
+                  Finalizing Moment...
                 </span>
               </div>
             </Show>
           </Show>
 
-          {/* STEP 3: FINAL READY (SUDAH ADA FRAME & QR DARI BE) */}
+          {/* STEP 3: HASIL DARI FOLDER RESULT */}
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
@@ -375,12 +365,8 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MODALS (Gallery, Preview, Stats) - Tetap sama untuk konsistensi UI */}
-      {/* ... (Kodingan modal Gallery, Preview Modal, dan Stats Modal di bawah ini sama dengan versi sebelumnya lu) ... */}
-
-      {/* (Gue potong biar ga kepanjangan, tapi kodenya sama persis buat bagian modal-modalnya) */}
+      {/* MODALS (Archive, Preview, Stats) - Tetap rapih scrollable */}
       <Show when={showGallery()}>
-        {/* Kodingan Gallery Modal lu yang sudah di-scrollable tadi */}
         <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
           <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
             <div class="flex flex-col">
@@ -408,7 +394,7 @@ export default function Photobooth() {
                   <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden shadow-2xl transition-all duration-300 hover:border-yellow-500">
                     <img
                       src={item.src}
-                      class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      class="w-full h-full object-cover"
                       loading="lazy"
                     />
                     <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300 gap-16 backdrop-blur-md">
@@ -433,7 +419,6 @@ export default function Photobooth() {
               </For>
             </div>
           </div>
-          <div class="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black to-transparent pointer-events-none"></div>
         </div>
       </Show>
 
@@ -441,12 +426,12 @@ export default function Photobooth() {
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-10 animate-pop">
           <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[80px] overflow-hidden w-full max-w-[1000px] shadow-[0_0_120px_rgba(0,0,0,1)]">
-            <div class="flex border-b-2 border-white/10 h-24 bg-zinc-900 text-2xl">
+            <div class="flex border-b-2 border-white/10 h-24 bg-zinc-900">
               <button
                 onClick={() => setActiveTab("photo")}
-                class={`flex-1 font-black uppercase italic ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
+                class={`flex-1 font-black uppercase italic text-2xl ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
               >
-                View Photo
+                Photo
               </button>
               <button
                 onClick={() => {
@@ -456,9 +441,9 @@ export default function Photobooth() {
                     50,
                   );
                 }}
-                class={`flex-1 font-black uppercase italic ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
+                class={`flex-1 font-black uppercase italic text-2xl ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
               >
-                Get QR Code
+                QR Code
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
@@ -477,7 +462,7 @@ export default function Photobooth() {
               <Show when={activeTab() === "qr"}>
                 <div class="bg-white p-12 rounded-[60px] flex flex-col items-center gap-10 shadow-2xl scale-125">
                   <canvas ref={qrCanvasRef}></canvas>
-                  <p class="text-black font-black text-center uppercase text-xl tracking-tight">
+                  <p class="text-black font-black text-center uppercase text-xl">
                     Scan for Download
                   </p>
                 </div>
@@ -490,28 +475,28 @@ export default function Photobooth() {
       {/* STATS MODAL */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 p-10 animate-pop">
-          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
+          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-2xl">
             <button
               onClick={() => setShowStats(false)}
               class="absolute top-12 right-12 text-white/30 hover:text-white transition-all"
             >
               <X size={60} />
             </button>
-            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8 tracking-tighter">
+            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8">
               Telemetry
             </h2>
             <div class="flex flex-col gap-12 text-center">
               <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
                 <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Total Captures
+                  Captured
                 </span>
-                <span class="text-[12rem] font-black italic tracking-tighter text-white leading-none">
+                <span class="text-[12rem] font-black italic text-white leading-none">
                   {stats().taken}
                 </span>
               </div>
               <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
                 <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Total Printed
+                  Printed
                 </span>
                 <span class="text-[12rem] font-black italic text-yellow-500 leading-none">
                   {stats().printed}
