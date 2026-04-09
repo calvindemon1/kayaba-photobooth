@@ -212,9 +212,7 @@ export default function Photobooth() {
     canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
 
-    // FLIP LOGIC: Kita gambar terbalik di canvas supaya hasil capture sesuai preview mirror
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
+    // UN-MIRROR LOGIC: Kita gambar normal (tanpa scale -1)
     ctx.drawImage(
       videoRef,
       (vW - rW) / 2,
@@ -226,7 +224,6 @@ export default function Photobooth() {
       canvas.width,
       canvas.height,
     );
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     const frameImg = new Image();
     frameImg.src = frameImgPath;
@@ -273,7 +270,7 @@ export default function Photobooth() {
         @keyframes rotation { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
       `}</style>
 
-      {/* HEADER: GEDEIN LAGI */}
+      {/* HEADER */}
       <div class="shrink-0 flex justify-between items-center border-b-4 border-yellow-500 pb-4 mb-4">
         <div class="flex items-center gap-4">
           <Zap
@@ -307,18 +304,16 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MAIN LAYOUT: FULL SCREEN PORTRAIT */}
+      {/* MAIN LAYOUT */}
       <div class="flex-1 flex flex-col gap-4 items-center justify-center min-h-0">
-        {/* CAMERA PREVIEW: MAKSIMALIN TINGGI */}
         <div class="relative aspect-[2/3] h-full max-h-[85vh] bg-zinc-900 border-4 overflow-hidden rounded-[50px] border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-          {/* VIDEO DENGAN FLIP (MIRROR) */}
+          {/* VIDEO NORMAL (Un-mirror) */}
           <video
             ref={videoRef}
             autoplay
-            class={`w-full h-full object-cover scale-x-[-1] ${photo() || processedPhoto() ? "hidden" : "block"}`}
+            class={`w-full h-full object-cover ${photo() || processedPhoto() ? "hidden" : "block"}`}
           />
 
-          {/* PREVIEW PHOTO MENTAH */}
           <Show when={photo() && !processedPhoto()}>
             <img src={photo()} class="w-full h-full object-cover animate-pop" />
             <Show when={isProcessing()}>
@@ -331,7 +326,6 @@ export default function Photobooth() {
             </Show>
           </Show>
 
-          {/* HASIL AKHIR DARI BE */}
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
@@ -342,7 +336,6 @@ export default function Photobooth() {
             </div>
           </Show>
 
-          {/* COUNTDOWN GEDE BANGET */}
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
               <span class="text-[18rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_30px_rgba(234,179,8,0.5)]">
@@ -352,7 +345,7 @@ export default function Photobooth() {
           </Show>
         </div>
 
-        {/* CONTROLS: GEDEIN TOMBOL */}
+        {/* CONTROLS */}
         <div class="w-full max-w-[500px] h-36 flex gap-6 shrink-0 pb-2">
           <Switch>
             <Match when={!photo() && !processedPhoto()}>
@@ -416,7 +409,7 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* GALLERY & OTHERS: GEDEIN FONTNYA */}
+      {/* MODALS (Archive, Preview, Stats tetep sama) */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[100] flex flex-col bg-black/98 backdrop-blur-2xl p-8 animate-pop">
           <div class="flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-6">
@@ -462,7 +455,6 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* PREVIEW MODAL GEDE */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-8 animate-pop">
           <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden w-full max-w-[550px] shadow-[0_0_100px_rgba(0,0,0,0.8)]">
@@ -512,7 +504,6 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* TELEMETRY GEDE */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-8 animate-pop">
           <div class="w-full max-w-xl bg-zinc-900 p-16 border-l-[16px] border-yellow-500 rounded-[50px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
