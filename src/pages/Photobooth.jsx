@@ -12,6 +12,8 @@ import {
   Eye,
   Image as ImageIcon,
   QrCode as QrIcon,
+  Check,
+  Trash2,
 } from "lucide-solid";
 import frameImgPath from "../assets/img/frame.png";
 
@@ -19,9 +21,11 @@ export default function Photobooth() {
   const BASE_URL = "http://localhost:8000";
   const DOWNLOAD_PAGE_URL = "https://lv24k4r6-3344.asse.devtunnels.ms/download";
 
-  const [photo, setPhoto] = createSignal(null);
+  const [photo, setPhoto] = createSignal(null); // Preview mentah + frame (FE)
+  const [processedPhoto, setProcessedPhoto] = createSignal(null); // Foto final dari BE (sudah ada QR)
   const [gallery, setGallery] = createSignal([]);
   const [isLoadingGallery, setIsLoadingGallery] = createSignal(false);
+  const [isProcessing, setIsProcessing] = createSignal(false); // State saat upload & get final path
   const [countdown, setCountdown] = createSignal(null);
   const [showStats, setShowStats] = createSignal(false);
   const [showGallery, setShowGallery] = createSignal(false);
@@ -30,7 +34,7 @@ export default function Photobooth() {
   const [activeTab, setActiveTab] = createSignal("photo");
 
   let videoRef;
-  let qrCanvasRef; // Ref untuk menggambar QR manual pake library qrcode
+  let qrCanvasRef;
 
   const playAudio = (path) => {
     const audio = new Audio(path);
@@ -59,7 +63,6 @@ export default function Photobooth() {
         fetch(`${BASE_URL}/api/all-local-photos-and-generated-qrs`),
         fetch(`${BASE_URL}/api/all-photos-and-generated-qrs`),
       ]);
-
       const dataLocal = await resLocal.json();
       const dataCloud = await resCloud.json();
 
@@ -67,7 +70,6 @@ export default function Photobooth() {
         const mappedGallery = dataLocal.paths.map((item, index) => {
           const fileName = item.result_photo_url.split("/").pop();
           const cloudPhotoUrl = dataCloud.paths[index]?.result_photo_url || "";
-
           return {
             src: `${BASE_URL}/photo-result/${fileName}`,
             downloadUrl: `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(cloudPhotoUrl)}`,
@@ -76,13 +78,12 @@ export default function Photobooth() {
         setGallery(mappedGallery);
       }
     } catch (err) {
-      console.error("Gallery Fetch Failed", err);
+      console.error("Gallery Error:", err);
     } finally {
       setTimeout(() => setIsLoadingGallery(false), 600);
     }
   };
 
-  // Fungsi buat nge-render QR ke canvas manual pake package 'qrcode'
   const generateQRInModal = (url) => {
     if (qrCanvasRef) {
       QRCode.toCanvas(qrCanvasRef, url, { width: 350, margin: 2 }, (err) => {
@@ -114,25 +115,47 @@ export default function Photobooth() {
     return new Blob([uInt8Array], { type: contentType });
   };
 
-  const uploadPhoto = async (base64) => {
+  // Alur: YES -> POST -> GET FINAL PREVIEW
+  const handleUsePhoto = async () => {
+    setIsProcessing(true);
     try {
       const formData = new FormData();
-      const photoBlob = base64ToBlob(base64);
+      const photoBlob = base64ToBlob(photo());
       formData.append("photo", photoBlob, `capture-${Date.now()}.png`);
       formData.append("framing_option_int", "0");
+
+      // 1. POST ke backend
       const res = await fetch(
         `${BASE_URL}/api/download-and-get-download-path`,
-        { method: "POST", body: formData },
+        {
+          method: "POST",
+          body: formData,
+        },
       );
+
       if (res.ok) {
-        await fetchStatistics();
-        await fetchGallery();
-        return true;
+        // 2. Ambil foto terakhir yang sudah diproses QR oleh backend
+        const resPreview = await fetch(`${BASE_URL}/api/get-preview-path`);
+        const dataPreview = await resPreview.json();
+
+        if (dataPreview.path) {
+          const fileName = dataPreview.path.split("/").pop();
+          setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
+          await fetchStatistics();
+          await fetchGallery();
+        }
       }
     } catch (err) {
-      console.error("Upload Error:", err);
+      console.error("Process Photo Error:", err);
+    } finally {
+      setIsProcessing(false);
     }
-    return false;
+  };
+
+  const resetCapture = () => {
+    setPhoto(null);
+    setProcessedPhoto(null);
+    setIsProcessing(false);
   };
 
   onMount(() => {
@@ -152,7 +175,7 @@ export default function Photobooth() {
   });
 
   const startCapture = () => {
-    setPhoto(null);
+    resetCapture();
     setCountdown(3);
     playAudio("/sfx/countdown.mp3");
     const timer = setInterval(() => {
@@ -181,6 +204,7 @@ export default function Photobooth() {
       rW = vW;
       rH = vW / targetRatio;
     }
+
     canvas.width = Math.floor(rW);
     canvas.height = Math.floor(rH);
     const ctx = canvas.getContext("2d");
@@ -198,12 +222,14 @@ export default function Photobooth() {
       canvas.height,
     );
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+
     const frameImg = new Image();
     frameImg.src = frameImgPath;
     await new Promise((res) => {
       frameImg.onload = res;
     });
     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
+
     setPhoto(canvas.toDataURL("image/png", 1.0));
     playAudio("/sfx/shutter.mp3");
   };
@@ -241,13 +267,15 @@ export default function Photobooth() {
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #eab308; border-radius: 10px; }
         .standard-btn { border-radius: 16px; transition: all 0.2s ease; overflow: hidden; }
+        .loader { width: 48px; height: 48px; border: 5px solid #FFF; border-bottom-color: #eab308; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } } 
       `}</style>
 
       {/* HEADER */}
       <div class="mb-8 flex justify-between items-center border-b-2 border-yellow-500 pb-4 shrink-0 leading-none">
         <div class="flex items-center gap-4">
           <Zap size={24} class="text-yellow-500" fill="currentColor" />
-          <h1 class="text-5xl font-black uppercase tracking-tighter italic">
+          <h1 class="text-5xl font-black uppercase tracking-tighter italic leading-none">
             PHOTO{" "}
             <span class="text-yellow-500 font-light">
               BOOTH{" "}
@@ -279,7 +307,6 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MAIN VIEW */}
       <div class="flex-1 flex gap-10 items-center justify-center min-h-0">
         <div
           class="relative aspect-[3/2] h-full max-h-full bg-zinc-900 border-2 overflow-hidden transition-all duration-500 rounded-[32px] border-white/10"
@@ -288,15 +315,37 @@ export default function Photobooth() {
           <video
             ref={videoRef}
             autoplay
-            class={`w-full h-full object-cover ${photo() ? "hidden" : "block"}`}
+            class={`w-full h-full object-cover ${photo() || processedPhoto() ? "hidden" : "block"}`}
             style={{ transform: "scaleX(-1)" }}
           />
-          <Show when={photo()}>
+
+          {/* Tampilan 1: Hasil Mentah FE */}
+          <Show when={photo() && !processedPhoto()}>
             <img
               src={photo()}
               class="w-full h-full object-cover animate-pop border-yellow-500"
             />
+            <Show when={isProcessing()}>
+              <div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-4 backdrop-blur-sm">
+                <span class="loader"></span>
+                <span class="font-black uppercase italic text-yellow-500">
+                  Processing QR...
+                </span>
+              </div>
+            </Show>
           </Show>
+
+          {/* Tampilan 2: Hasil Final dari BE (Sudah ada QR) */}
+          <Show when={processedPhoto()}>
+            <img
+              src={processedPhoto()}
+              class="w-full h-full object-cover animate-pop border-green-500"
+            />
+            <div class="absolute top-6 left-6 bg-green-500 text-black font-black px-4 py-1 rounded-full text-xs uppercase italic animate-bounce">
+              Final Result
+            </div>
+          </Show>
+
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md">
               <span class="text-[20rem] font-black text-yellow-500 animate-pulse italic leading-none">
@@ -307,62 +356,76 @@ export default function Photobooth() {
         </div>
 
         <div class="w-72 flex flex-col gap-5 h-full py-4 leading-none">
-          <Show
-            when={!photo()}
-            fallback={
-              <>
+          <Switch>
+            {/* STEP 1: Belum Foto */}
+            <Match when={!photo() && !processedPhoto()}>
+              <button
+                onClick={startCapture}
+                class="flex-1 bg-white text-black flex flex-col items-center justify-center gap-6 border-b-8 border-zinc-400 group standard-btn hover:bg-yellow-500 transition-colors"
+              >
+                <Camera
+                  size={80}
+                  class="group-hover:scale-110 transition-transform"
+                />
+                <span class="font-black uppercase text-5xl italic tracking-tighter leading-none">
+                  Capture
+                </span>
+              </button>
+            </Match>
+
+            {/* STEP 2: Sudah Foto, Konfirmasi Use Photo? */}
+            <Match when={photo() && !processedPhoto()}>
+              <div class="flex-1 flex flex-col gap-5">
+                <div class="bg-zinc-900 p-4 rounded-2xl border border-white/10 text-center">
+                  <p class="font-black italic uppercase text-yellow-500 text-xl">
+                    Use this photo?
+                  </p>
+                </div>
                 <button
-                  onClick={() => setPhoto(null)}
-                  class="flex-1 bg-zinc-800 hover:bg-red-700 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn"
+                  onClick={handleUsePhoto}
+                  disabled={isProcessing()}
+                  class="flex-1 bg-yellow-500 text-black flex flex-col items-center justify-center gap-2 border-b-8 border-yellow-700 standard-btn"
                 >
-                  <RotateCcw size={40} />
-                  <span class="font-black uppercase text-xl italic">
-                    Retake
-                  </span>
+                  <Check size={48} />
+                  <span class="font-black uppercase text-2xl italic">YES</span>
                 </button>
                 <button
-                  onClick={async () => {
-                    await uploadPhoto(photo());
-                    await togglePrintStatus(false);
-                    setPhoto(null);
-                  }}
-                  class="flex-1 bg-zinc-100 hover:bg-white text-black flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-400 standard-btn"
+                  onClick={resetCapture}
+                  disabled={isProcessing()}
+                  class="flex-[0.5] bg-zinc-800 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-red-900 standard-btn"
                 >
-                  <Save size={40} />
-                  <span class="font-black uppercase text-xl italic text-zinc-600">
-                    Save Only
+                  <Trash2 size={24} />
+                  <span class="font-black uppercase text-sm italic text-red-500">
+                    NO, RETAKE
                   </span>
                 </button>
+              </div>
+            </Match>
+
+            {/* STEP 3: Foto Final Muncul, Pilihan Print / Retake */}
+            <Match when={processedPhoto()}>
+              <div class="flex-1 flex flex-col gap-5 animate-pop">
                 <button
-                  onClick={async () => {
-                    const current = photo();
-                    await uploadPhoto(current);
-                    handleNativePrint(current);
-                    setPhoto(null);
-                  }}
-                  class="flex-[1.8] bg-yellow-500 hover:bg-yellow-400 text-black flex flex-col items-center justify-center gap-3 border-b-8 border-yellow-700 shadow-xl standard-btn"
+                  onClick={() => handleNativePrint(processedPhoto())}
+                  class="flex-[2] bg-yellow-500 text-black flex flex-col items-center justify-center gap-4 border-b-8 border-yellow-700 shadow-2xl standard-btn"
                 >
-                  <Printer size={64} />
-                  <span class="font-black uppercase text-3xl italic">
+                  <Printer size={70} />
+                  <span class="font-black uppercase text-3xl italic leading-none">
                     Print 4R
                   </span>
                 </button>
-              </>
-            }
-          >
-            <button
-              onClick={startCapture}
-              class="flex-1 bg-white text-black flex flex-col items-center justify-center gap-6 border-b-8 border-zinc-400 group standard-btn hover:bg-yellow-500 transition-colors"
-            >
-              <Camera
-                size={80}
-                class="group-hover:scale-110 transition-transform"
-              />
-              <span class="font-black uppercase text-5xl italic tracking-tighter leading-none">
-                Capture
-              </span>
-            </button>
-          </Show>
+                <button
+                  onClick={resetCapture}
+                  class="flex-1 bg-zinc-800 text-white flex flex-col items-center justify-center gap-2 border-b-8 border-zinc-600 standard-btn"
+                >
+                  <RotateCcw size={32} />
+                  <span class="font-black uppercase text-xl italic text-zinc-400">
+                    Retake
+                  </span>
+                </button>
+              </div>
+            </Match>
+          </Switch>
         </div>
       </div>
 
@@ -370,7 +433,7 @@ export default function Photobooth() {
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 backdrop-blur-lg p-10 animate-pop">
           <div class="w-full max-w-6xl h-full flex flex-col">
-            <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4 shrink-0">
+            <div class="flex justify-between items-center mb-8 border-b-2 border-yellow-500 pb-4 shrink-0 leading-none">
               <h2 class="text-4xl font-black italic uppercase tracking-tighter text-white">
                 Fleet Archives
               </h2>
@@ -381,7 +444,7 @@ export default function Photobooth() {
                 <X size={32} />
               </button>
             </div>
-            <div class="flex-1 grid grid-cols-3 gap-6 overflow-y-auto pr-6 pb-6 custom-scrollbar">
+            <div class="flex-1 grid grid-cols-3 gap-6 overflow-y-auto pr-6 pb-20 custom-scrollbar">
               <Show when={isLoadingGallery()}>
                 <For each={[1, 2, 3, 4, 5, 6]}>
                   {() => (
@@ -430,7 +493,7 @@ export default function Photobooth() {
             class="relative flex flex-col bg-zinc-900 border-2 border-white/10 shadow-2xl rounded-[40px] overflow-hidden"
             style={{ width: "80vw", "max-width": "1200px" }}
           >
-            <div class="flex border-b border-white/10 h-16 shrink-0 bg-zinc-900 leading-none">
+            <div class="flex border-b border-white/10 h-16 shrink-0 bg-zinc-900">
               <button
                 onClick={() => setActiveTab("photo")}
                 class={`flex-1 flex items-center justify-center gap-4 font-black uppercase italic transition-all ${activeTab() === "photo" ? "bg-white text-black" : "hover:bg-white/5 text-white/50"}`}
@@ -470,11 +533,10 @@ export default function Photobooth() {
                     <p class="text-black font-black text-center uppercase text-sm">
                       Scan to Download to Mobile
                     </p>
-                    {/* LINK UNTUK TESTING PC */}
                     <a
                       href={previewItem().downloadUrl}
                       target="_blank"
-                      class="text-yellow-600 font-bold underline text-xs"
+                      class="text-yellow-600 font-bold underline text-xs italic"
                     >
                       Test Link (PC ONLY)
                     </a>
