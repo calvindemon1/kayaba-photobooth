@@ -103,19 +103,20 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 1: TAKE PHOTO & GET PREVIEW (DARI FOLDER TEMPORARY) ---
+  // --- STEP 2: TAKE PHOTO & GET PREVIEW ---
   const handleCapture = async () => {
     try {
+      // 1. Trigger Take Photo di BE
       await fetch(`${BASE_URL}/take-photo-flexible`);
 
+      // 2. Ambil Path Preview
       const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
       const dataPreview = await resPreview.json();
 
       if (dataPreview.photo) {
-        // Ambil nama file saja dari path C:\...\temporary\file.png
         const fileName = dataPreview.photo.split(/[\\/]/).pop();
-        // Nembak ke static path preview
-        setPhoto(`${BASE_URL}/photo-temporary/${fileName}`);
+        // Set photo untuk masuk ke step "Use this photo?"
+        setPhoto(`${BASE_URL}/photo-preview/${fileName}`);
         playAudio("/sfx/shutter.mp3");
       }
     } catch (err) {
@@ -123,25 +124,23 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 2: CONFIRM PHOTO (YES) -> PINDAH KE FOLDER RESULT ---
+  // --- STEP 3: CONFIRM PHOTO (YES) ---
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
-      // Hit endpoint copy (BE bakal pindahin dari temporary ke result + framing)
+      // BE proses framing & QR otomatis
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
       });
 
       if (res.ok) {
-        // Ambil path hasil final lewat getresultpath
+        // Ambil path hasil final yang sudah diframing BE
         const resFinal = await fetch(`${BASE_URL}/getresultpath`);
         const dataFinal = await resFinal.json();
 
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
-          // Set hasil akhir yang sudah ada di folder RESULT
           setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
-
           await fetchStatistics();
           await fetchGallery();
         }
@@ -255,29 +254,31 @@ export default function Photobooth() {
 
       {/* MAIN CONTENT */}
       <div class="flex-1 flex flex-col gap-10 items-center justify-center min-h-0">
+        {/* PREVIEW CONTAINER */}
         <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[60px] border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
-          {/* LIVE STREAM */}
+          {/* STEP 1: STREAM DARI BACKEND */}
           <Show when={!photo() && !processedPhoto()}>
             <img
               src={`${BASE_URL}/stream-flexible`}
               class="w-full h-full object-cover"
+              alt="Live Stream"
             />
           </Show>
 
-          {/* PREVIEW DARI FOLDER TEMPORARY */}
+          {/* STEP 2: PREVIEW PHOTO (SETELAH TAKE) */}
           <Show when={photo() && !processedPhoto()}>
             <img src={photo()} class="w-full h-full object-cover animate-pop" />
             <Show when={isProcessing()}>
               <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6 backdrop-blur-xl">
                 <span class="loader"></span>
                 <span class="font-black uppercase italic text-yellow-500 tracking-[0.3em] animate-pulse text-3xl">
-                  Finalizing...
+                  Processing Final...
                 </span>
               </div>
             </Show>
           </Show>
 
-          {/* HASIL DARI FOLDER RESULT */}
+          {/* STEP 3: FINAL READY (SUDAH ADA FRAME & QR DARI BE) */}
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
@@ -340,7 +341,7 @@ export default function Photobooth() {
               <div class="flex-1 flex gap-6 animate-pop">
                 <button
                   onClick={() => handleNativePrint(processedPhoto())}
-                  class="flex-[2.5] bg-yellow-500 text-black flex items-center justify-center gap-8 border-b-[16px] border-yellow-700 standard-btn shadow-[0_0_50px_rgba(234,179,8,0.5)]"
+                  class="flex-[2.5] bg-yellow-500 text-black flex items-center justify-center gap-8 border-b-[12px] border-yellow-700 standard-btn shadow-[0_0_50px_rgba(234,179,8,0.5)]"
                 >
                   <Printer size={80} />
                   <span class="font-black uppercase text-5xl italic">
@@ -349,7 +350,7 @@ export default function Photobooth() {
                 </button>
                 <button
                   onClick={resetCapture}
-                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[16px] border-zinc-600 standard-btn"
+                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[12px] border-zinc-600 standard-btn"
                 >
                   <RotateCcw size={50} />
                   <span class="font-black uppercase text-3xl italic text-zinc-400">
@@ -362,8 +363,12 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* GALLERY MODAL */}
+      {/* MODALS (Gallery, Preview, Stats) - Tetap sama untuk konsistensi UI */}
+      {/* ... (Kodingan modal Gallery, Preview Modal, dan Stats Modal di bawah ini sama dengan versi sebelumnya lu) ... */}
+
+      {/* (Gue potong biar ga kepanjangan, tapi kodenya sama persis buat bagian modal-modalnya) */}
       <Show when={showGallery()}>
+        {/* Kodingan Gallery Modal lu yang sudah di-scrollable tadi */}
         <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
           <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
             <div class="flex flex-col">
