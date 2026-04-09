@@ -128,15 +128,17 @@ export default function Photobooth() {
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
-      // Hit endpoint confirm dengan body JSON
+      // 1. Buat objek FormData
+      const formData = new FormData();
+
+      // 2. Tambahkan key sesuai screenshot: framing_option_int
+      // Value '0' artinya no framing sesuai deskripsi di foto lu
+      formData.append("framing_option_int", "0");
+
+      // 3. Hit endpoint konfirmasi
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json", // Wajib ada biar BE tau ini JSON
-        },
-        body: JSON.stringify({
-          option: 1, // Format objek yang lu minta
-        }),
+        body: formData, // Langsung lempar formData sebagai body
       });
 
       if (res.ok) {
@@ -146,14 +148,14 @@ export default function Photobooth() {
 
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
-          // Set hasil akhir yang sudah ada di folder RESULT
+          // Set hasil akhir (folder RESULT)
           setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
 
           await fetchStatistics();
           await fetchGallery();
         }
       } else {
-        console.error("Gagal konfirmasi foto:", res.statusText);
+        console.error("Gagal konfirmasi foto via form-data");
       }
     } catch (err) {
       console.error("Process Photo Error:", err);
