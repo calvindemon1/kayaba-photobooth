@@ -134,7 +134,7 @@ export default function Photobooth() {
 
       if (res.ok) {
         // AMBIL HASIL DARI ENDPOINT GETRESULTPATH
-        const resPreview = await fetch(`${BASE_URL}/api/getresultpath`);
+        const resPreview = await fetch(`${BASE_URL}/getresultpath`);
         const dataPreview = await resPreview.json();
 
         if (dataPreview.photo) {
