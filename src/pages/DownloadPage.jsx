@@ -27,21 +27,34 @@ export default function DownloadPage() {
   const handleDownload = async () => {
     if (!photoUrl()) return;
     setIsDownloading(true);
+
     try {
-      // Kita pake fetch buat bypass 'download' attribute yang sering diblok mobile browser
       const response = await fetch(photoUrl());
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `kayaba-moment-${Date.now()}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+
+      // Trik: Convert blob ke Base64 Data URL biar browser maksa download
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result;
+        const link = document.createElement("a");
+        link.href = base64data;
+
+        // Nama file wajib pake extension .png
+        link.download = `kayaba-moment-${Date.now()}.png`;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      reader.readAsDataURL(blob);
     } catch (err) {
-      console.error("Download failed", err);
-      window.open(photoUrl(), "_blank"); // Fallback
+      console.error("Force download failed:", err);
+      // Fallback manual jika fetch tetep gagal di beberapa browser
+      const link = document.createElement("a");
+      link.href = photoUrl();
+      link.target = "_blank";
+      link.download = "moment.png";
+      link.click();
     } finally {
       setIsDownloading(false);
     }
