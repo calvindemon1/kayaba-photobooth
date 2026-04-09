@@ -107,7 +107,7 @@ export default function Photobooth() {
   const handleCapture = async () => {
     try {
       // 1. Trigger Take Photo di BE
-      await fetch(`${BASE_URL}/take-photo-flexible`);
+      await fetch(`${BASE_URL}/take-photo-landscape`);
 
       // 2. Ambil Path Preview
       const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
@@ -128,19 +128,23 @@ export default function Photobooth() {
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
-      // BE proses framing & QR otomatis
+      // Bikin FormData
+      const formData = new FormData();
+      formData.append("option", "1"); // <--- Tambahan option di sini
+
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
+        body: formData,
       });
 
       if (res.ok) {
-        // Ambil path hasil final yang sudah diframing BE
         const resFinal = await fetch(`${BASE_URL}/getresultpath`);
         const dataFinal = await resFinal.json();
 
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
           setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
+
           await fetchStatistics();
           await fetchGallery();
         }
@@ -259,7 +263,7 @@ export default function Photobooth() {
           {/* STEP 1: STREAM DARI BACKEND */}
           <Show when={!photo() && !processedPhoto()}>
             <img
-              src={`${BASE_URL}/stream-flexible`}
+              src={`${BASE_URL}/stream-landscape`}
               class="w-full h-full object-cover"
               alt="Live Stream"
             />
