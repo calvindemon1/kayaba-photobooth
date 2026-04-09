@@ -8,8 +8,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 3344,
+    // PINDAHIN KE SINI BRO:
+    allowedHosts: [
+      "moments.kayaba50thanniversary.site",
+      "lv24k4r6-3344.asse.devtunnels.ms", // Tambahin juga domain tunnel lu biar aman
+    ],
   },
-  allowedHosts: ["moments.kayaba50thanniversary.site"],
   build: {
     target: "esnext",
   },
