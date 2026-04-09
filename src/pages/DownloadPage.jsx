@@ -1,35 +1,34 @@
 import { createSignal, onMount, Show } from "solid-js";
-// DIRECT IMPORT supaya nggak berat nembak ribuan request
-import DownloadIcon from "lucide-solid/dist/source/icons/download";
-import Zap from "lucide-solid/dist/source/icons/zap";
-import ImageIcon from "lucide-solid/dist/source/icons/image";
+import DownloadIcon from "lucide-solid/icons/download";
+import ZapIcon from "lucide-solid/icons/zap";
+import ImageIcon from "lucide-solid/icons/image";
 
 export default function DownloadPage() {
   const [photoUrl, setPhotoUrl] = createSignal("");
   const [isDownloading, setIsDownloading] = createSignal(false);
 
-  // 1. URL Tunnel Backend lu (Wajib jalan & bisa diakses HP)
-  // Pastikan port backend (8000) juga di-tunnel kalau beda domain
-  const PUBLIC_BACKEND_URL = "https://moments.kayaba50thanniversary.site";
+  // GANTI KE DOMAIN YANG LU KASIH TADI BRO (photobooth, bukan moments)
+  const PUBLIC_BACKEND_URL = "https://photobooth.kayaba50thanniversary.site";
 
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
-    const photoPath = params.get("photo"); // Isinya: /results/photos/result/abc.png
+    const photoPath = params.get("photo");
 
     if (photoPath) {
-      // Ambil nama filenya saja
+      // Ambil nama filenya saja (misal: f2bee822...png)
       const fileName = photoPath.split("/").pop();
-      // Gabungin ke URL static backend lu
+      // Gabungin ke domain backend yang bener
       const fullUrl = `${PUBLIC_BACKEND_URL}/photo-result/${fileName}`;
       setPhotoUrl(fullUrl);
+      console.log("Loading photo from:", fullUrl); // Buat debug di console
     }
   });
 
-  // Fungsi Download supaya beneran ke-save di HP
   const handleDownload = async () => {
     if (!photoUrl()) return;
     setIsDownloading(true);
     try {
+      // Kita pake fetch buat bypass 'download' attribute yang sering diblok mobile browser
       const response = await fetch(photoUrl());
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -42,8 +41,7 @@ export default function DownloadPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download failed", err);
-      // Fallback kalau fetch blob gagal (biasanya CORS)
-      window.open(photoUrl(), "_blank");
+      window.open(photoUrl(), "_blank"); // Fallback
     } finally {
       setIsDownloading(false);
     }
@@ -53,8 +51,8 @@ export default function DownloadPage() {
     <div class="min-h-screen bg-black text-white italic font-sans p-6 flex flex-col items-center select-none">
       {/* Header */}
       <div class="w-full max-w-md flex items-center justify-center gap-3 border-b-2 border-yellow-500 pb-4 mb-8 pt-4">
-        <Zap size={24} class="text-yellow-500" fill="currentColor" />
-        <h1 class="text-3xl font-black uppercase tracking-tighter italic">
+        <ZapIcon size={24} class="text-yellow-500" fill="currentColor" />
+        <h1 class="text-3xl font-black uppercase tracking-tighter italic leading-none">
           YOUR <span class="text-yellow-500 font-light">MOMENT</span>
         </h1>
       </div>
@@ -65,9 +63,11 @@ export default function DownloadPage() {
           when={photoUrl()}
           fallback={
             <div class="w-full h-full flex flex-col items-center justify-center text-zinc-700 gap-4">
-              <ImageIcon size={64} />
-              <p class="font-bold uppercase text-xs tracking-widest">
-                Loading Moment...
+              <div class="animate-spin duration-1000">
+                <ZapIcon size={48} class="text-yellow-500/20" />
+              </div>
+              <p class="font-bold uppercase text-[10px] tracking-widest text-center opacity-50">
+                Initializing Moment...
               </p>
             </div>
           }
@@ -75,7 +75,9 @@ export default function DownloadPage() {
           <img
             src={photoUrl()}
             class="w-full h-full object-cover"
-            alt="Kayaba Anniversary Moment"
+            alt="Moment"
+            onLoad={() => console.log("Image loaded successfully")}
+            onError={(e) => console.error("Image failed to load:", e)}
           />
         </Show>
       </div>
@@ -87,20 +89,17 @@ export default function DownloadPage() {
           disabled={!photoUrl() || isDownloading()}
           class={`w-full py-6 rounded-[24px] flex items-center justify-center gap-4 font-black uppercase text-2xl shadow-[0_15px_30px_rgba(234,179,8,0.3)] transition-all active:scale-95 ${
             isDownloading()
-              ? "bg-zinc-700 text-zinc-400"
+              ? "bg-zinc-800 text-zinc-500"
               : "bg-yellow-500 hover:bg-yellow-400 text-black"
           }`}
         >
-          <DownloadIcon size={28} stroke-width={3} />
+          <DownloadIcon size={28} />
           {isDownloading() ? "Saving..." : "Download Photo"}
         </button>
 
         <div class="flex flex-col items-center gap-2 mt-4 text-zinc-500">
           <p class="text-center text-[10px] font-black uppercase tracking-[0.3em]">
             KYB 50th Anniversary
-          </p>
-          <p class="text-center text-[9px] font-bold uppercase tracking-widest opacity-50">
-            Official Photobooth System
           </p>
         </div>
       </div>
