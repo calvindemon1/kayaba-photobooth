@@ -14,6 +14,7 @@ import {
   Check,
   Trash2,
 } from "lucide-solid";
+import frameImgPath from "../assets/img/frame.png";
 
 export default function Photobooth() {
   const BASE_URL = "http://localhost:8000";
@@ -31,6 +32,7 @@ export default function Photobooth() {
   const [previewItem, setPreviewItem] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("photo");
 
+  let videoRef;
   let qrCanvasRef;
 
   const playAudio = (path) => {
@@ -103,43 +105,33 @@ export default function Photobooth() {
     }
   };
 
-  // --- STEP 2: TAKE PHOTO & GET PREVIEW ---
-  const handleCapture = async () => {
-    try {
-      // 1. Trigger Take Photo di BE
-      await fetch(`${BASE_URL}/take-photo-flexible`);
-
-      // 2. Ambil Path Preview
-      const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
-      const dataPreview = await resPreview.json();
-
-      if (dataPreview.photo) {
-        const fileName = dataPreview.photo.split(/[\\/]/).pop();
-        // Set photo untuk masuk ke step "Use this photo?"
-        setPhoto(`${BASE_URL}/photo-preview/${fileName}`);
-        playAudio("/sfx/shutter.mp3");
-      }
-    } catch (err) {
-      console.error("Capture Error:", err);
-    }
+  const base64ToBlob = (base64) => {
+    const parts = base64.split(";base64,");
+    const contentType = parts[0].split(":")[1];
+    const raw = window.atob(parts[1]);
+    const uInt8Array = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) uInt8Array[i] = raw.charCodeAt(i);
+    return new Blob([uInt8Array], { type: contentType });
   };
 
-  // --- STEP 3: CONFIRM PHOTO (YES) ---
   const handleUsePhoto = async () => {
     setIsProcessing(true);
     try {
-      // BE proses framing & QR otomatis
-      const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
-        method: "POST",
-      });
+      const formData = new FormData();
+      const photoBlob = base64ToBlob(photo());
+      formData.append("photo", photoBlob, `capture-${Date.now()}.png`);
+      formData.append("framing_option_int", "0");
+
+      const res = await fetch(
+        `${BASE_URL}/api/download-and-get-download-path`,
+        { method: "POST", body: formData },
+      );
 
       if (res.ok) {
-        // Ambil path hasil final yang sudah diframing BE
-        const resFinal = await fetch(`${BASE_URL}/getresultpath`);
-        const dataFinal = await resFinal.json();
-
-        if (dataFinal.photo) {
-          const fileName = dataFinal.photo.split(/[\\/]/).pop();
+        const resPreview = await fetch(`${BASE_URL}/getresultpath`);
+        const dataPreview = await resPreview.json();
+        if (dataPreview.photo) {
+          const fileName = dataPreview.photo.split(/[\\/]/).pop();
           setProcessedPhoto(`${BASE_URL}/photo-result/${fileName}`);
           await fetchStatistics();
           await fetchGallery();
@@ -161,9 +153,20 @@ export default function Photobooth() {
   onMount(() => {
     fetchStatistics();
     fetchGallery();
+    const initCamera = async () => {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1920, height: 1080 },
+        });
+        videoRef.srcObject = s;
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    initCamera();
   });
 
-  const startCaptureSequence = () => {
+  const startCapture = () => {
     resetCapture();
     setCountdown(3);
     playAudio("/sfx/countdown.mp3");
@@ -171,13 +174,56 @@ export default function Photobooth() {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          handleCapture();
+          captureProcess();
           return null;
         }
         playAudio("/sfx/countdown.mp3");
         return prev - 1;
       });
     }, 1000);
+  };
+
+  const captureProcess = async () => {
+    const canvas = document.createElement("canvas");
+    const vW = videoRef.videoWidth;
+    const vH = videoRef.videoHeight;
+    const targetRatio = 3 / 2;
+
+    let rW, rH;
+    if (vW / vH > targetRatio) {
+      rH = vH;
+      rW = vH * targetRatio;
+    } else {
+      rW = vW;
+      rH = vW / targetRatio;
+    }
+
+    canvas.width = Math.floor(rW);
+    canvas.height = Math.floor(rH);
+    const ctx = canvas.getContext("2d");
+
+    // NORMAL DRAW (No Mirroring)
+    ctx.drawImage(
+      videoRef,
+      (vW - rW) / 2,
+      (vH - rH) / 2,
+      rW,
+      rH,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+
+    const frameImg = new Image();
+    frameImg.src = frameImgPath;
+    await new Promise((res) => {
+      frameImg.onload = res;
+    });
+    ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
+
+    setPhoto(canvas.toDataURL("image/png", 1.0));
+    playAudio("/sfx/shutter.mp3");
   };
 
   const handleNativePrint = (imgUrl) => {
@@ -254,31 +300,26 @@ export default function Photobooth() {
 
       {/* MAIN CONTENT */}
       <div class="flex-1 flex flex-col gap-10 items-center justify-center min-h-0">
-        {/* PREVIEW CONTAINER */}
+        {/* PREVIEW CONTAINER (LANDSCAPE ASPECT) */}
         <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[60px] border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
-          {/* STEP 1: STREAM DARI BACKEND */}
-          <Show when={!photo() && !processedPhoto()}>
-            <img
-              src={`${BASE_URL}/stream-flexible`}
-              class="w-full h-full object-cover"
-              alt="Live Stream"
-            />
-          </Show>
+          <video
+            ref={videoRef}
+            autoplay
+            class={`w-full h-full object-cover ${photo() || processedPhoto() ? "hidden" : "block"}`}
+          />
 
-          {/* STEP 2: PREVIEW PHOTO (SETELAH TAKE) */}
           <Show when={photo() && !processedPhoto()}>
             <img src={photo()} class="w-full h-full object-cover animate-pop" />
             <Show when={isProcessing()}>
               <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6 backdrop-blur-xl">
                 <span class="loader"></span>
                 <span class="font-black uppercase italic text-yellow-500 tracking-[0.3em] animate-pulse text-3xl">
-                  Processing Final...
+                  Processing...
                 </span>
               </div>
             </Show>
           </Show>
 
-          {/* STEP 3: FINAL READY (SUDAH ADA FRAME & QR DARI BE) */}
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
@@ -289,9 +330,8 @@ export default function Photobooth() {
             </div>
           </Show>
 
-          {/* COUNTDOWN */}
           <Show when={countdown() !== null}>
-            <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-50">
+            <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
               <span class="text-[20rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]">
                 {countdown()}
               </span>
@@ -304,7 +344,7 @@ export default function Photobooth() {
           <Switch>
             <Match when={!photo() && !processedPhoto()}>
               <button
-                onClick={startCaptureSequence}
+                onClick={startCapture}
                 class="flex-1 bg-white text-black flex items-center justify-center gap-8 border-b-[16px] border-zinc-400 standard-btn hover:bg-yellow-500 hover:border-yellow-700 transition-all"
               >
                 <Camera size={80} />
@@ -319,7 +359,7 @@ export default function Photobooth() {
                 <button
                   onClick={handleUsePhoto}
                   disabled={isProcessing()}
-                  class="flex-[2] bg-yellow-500 text-black flex items-center justify-center gap-6 border-b-[12px] border-yellow-700 standard-btn shadow-2xl"
+                  class="flex-[2] bg-yellow-500 text-black flex items-center justify-center gap-6 border-b-[16px] border-yellow-700 standard-btn shadow-2xl"
                 >
                   <Check size={60} />
                   <span class="font-black uppercase text-5xl italic">YES</span>
@@ -327,7 +367,7 @@ export default function Photobooth() {
                 <button
                   onClick={resetCapture}
                   disabled={isProcessing()}
-                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[12px] border-red-900 standard-btn"
+                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[16px] border-red-900 standard-btn"
                 >
                   <Trash2 size={40} class="text-red-500" />
                   <span class="font-black uppercase text-2xl italic">
@@ -341,7 +381,7 @@ export default function Photobooth() {
               <div class="flex-1 flex gap-6 animate-pop">
                 <button
                   onClick={() => handleNativePrint(processedPhoto())}
-                  class="flex-[2.5] bg-yellow-500 text-black flex items-center justify-center gap-8 border-b-[12px] border-yellow-700 standard-btn shadow-[0_0_50px_rgba(234,179,8,0.5)]"
+                  class="flex-[2.5] bg-yellow-500 text-black flex items-center justify-center gap-8 border-b-[16px] border-yellow-700 standard-btn shadow-[0_0_50px_rgba(234,179,8,0.5)]"
                 >
                   <Printer size={80} />
                   <span class="font-black uppercase text-5xl italic">
@@ -350,7 +390,7 @@ export default function Photobooth() {
                 </button>
                 <button
                   onClick={resetCapture}
-                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[12px] border-zinc-600 standard-btn"
+                  class="flex-1 bg-zinc-800 text-white flex items-center justify-center gap-6 border-b-[16px] border-zinc-600 standard-btn"
                 >
                   <RotateCcw size={50} />
                   <span class="font-black uppercase text-3xl italic text-zinc-400">
@@ -363,12 +403,8 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MODALS (Gallery, Preview, Stats) - Tetap sama untuk konsistensi UI */}
-      {/* ... (Kodingan modal Gallery, Preview Modal, dan Stats Modal di bawah ini sama dengan versi sebelumnya lu) ... */}
-
-      {/* (Gue potong biar ga kepanjangan, tapi kodenya sama persis buat bagian modal-modalnya) */}
+      {/* GALLERY MODAL */}
       <Show when={showGallery()}>
-        {/* Kodingan Gallery Modal lu yang sudah di-scrollable tadi */}
         <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
           <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
             <div class="flex flex-col">
@@ -389,6 +425,7 @@ export default function Photobooth() {
               />
             </button>
           </div>
+
           <div class="flex-1 overflow-y-auto pr-6 custom-scrollbar">
             <div class="grid grid-cols-2 gap-10 pb-32">
               <For each={gallery()}>
