@@ -51,38 +51,32 @@ export default function Photobooth() {
     }
   };
 
-  // --- FIX GALLERY FETCHING LOGIC ---
+  // --- REVISI GALLERY: SINKRON LOKAL & SORT TERBARU ---
   const fetchGallery = async () => {
     setIsLoadingGallery(true);
     try {
-      // Ambil data dari lokal saja karena folder lokal yang jadi patokan utama
       const resLocal = await fetch(
         `${BASE_URL}/api/all-local-photos-and-generated-qrs`,
       );
       const dataLocal = await resLocal.json();
 
       if (dataLocal.paths) {
-        const mappedGallery = dataLocal.paths.map((item) => {
-          // Ambil nama file murni (misal: abc.png)
+        // 1. Sort berdasarkan timestamp terbesar (terbaru) duluan
+        const sortedPaths = [...dataLocal.paths].sort(
+          (a, b) => b.timestamp - a.timestamp,
+        );
+
+        const mappedGallery = sortedPaths.map((item) => {
           const fileName = item.result_photo_url.split(/[\\/]/).pop();
 
-          // Path untuk nampilin di UI Photobooth (pake IP Lokal BE)
-          const localSrc = `${BASE_URL}/photo-result/${fileName}`;
-
-          // Path Cloud untuk di scan QR (URL yang bakal dibuka di HP user)
-          // Kita kirim path '/results/photos/result/abc.png' ke download page
-          const cloudPath = item.result_photo_url;
-          const downloadUrl = `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(cloudPath)}`;
-
           return {
-            src: localSrc,
-            downloadUrl: downloadUrl,
+            src: `${BASE_URL}/photo-result/${fileName}`,
+            downloadUrl: `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(item.result_photo_url)}`,
             createdAt: item.created_at,
           };
         });
 
-        // Urutkan dari yang paling baru (Newest First)
-        setGallery(mappedGallery.reverse());
+        setGallery(mappedGallery);
       }
     } catch (err) {
       console.error("Gallery Error:", err);
@@ -113,15 +107,6 @@ export default function Photobooth() {
     }
   };
 
-  const base64ToBlob = (base64) => {
-    const parts = base64.split(";base64,");
-    const contentType = parts[0].split(":")[1];
-    const raw = window.atob(parts[1]);
-    const uInt8Array = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; ++i) uInt8Array[i] = raw.charCodeAt(i);
-    return new Blob([uInt8Array], { type: contentType });
-  };
-
   const handleCapture = async () => {
     try {
       await fetch(`${BASE_URL}/takephoto-landscape`);
@@ -130,7 +115,7 @@ export default function Photobooth() {
 
       if (dataPreview.photo) {
         const fileName = dataPreview.photo.split(/[\\/]/).pop();
-        const freshUrl = `${BASE_URL}/photo-temporary/${fileName}?t=${Date.now()}`;
+        const freshUrl = `${BASE_URL}/photo-preview/${fileName}?t=${Date.now()}`;
         setPhoto(freshUrl);
         playAudio("/sfx/shutter.mp3");
       }
@@ -270,7 +255,6 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
       <div class="flex-1 flex flex-col gap-10 items-center justify-center min-h-0">
         <div class="relative aspect-[3/2] w-full max-w-[95vw] bg-zinc-900 border-4 overflow-hidden rounded-[60px] border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
           <Show when={!photo() && !processedPhoto()}>
@@ -280,7 +264,6 @@ export default function Photobooth() {
               alt="Live Stream"
             />
           </Show>
-
           <Show when={photo() && !processedPhoto()}>
             <img src={photo()} class="w-full h-full object-cover animate-pop" />
             <Show when={isProcessing()}>
@@ -292,7 +275,6 @@ export default function Photobooth() {
               </div>
             </Show>
           </Show>
-
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
@@ -302,7 +284,6 @@ export default function Photobooth() {
               READY!
             </div>
           </Show>
-
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-50">
               <span class="text-[20rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]">
@@ -373,7 +354,6 @@ export default function Photobooth() {
         </div>
       </div>
 
-      {/* GALLERY MODAL - FIXED SCROLLING & MAPPING */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
           <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
@@ -431,7 +411,7 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* PREVIEW MODAL */}
+      {/* Modal Preview & Stats tetep di bawah */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-10 animate-pop">
           <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[80px] overflow-hidden w-full max-w-[1000px] shadow-[0_0_120px_rgba(0,0,0,1)]">
@@ -440,7 +420,7 @@ export default function Photobooth() {
                 onClick={() => setActiveTab("photo")}
                 class={`flex-1 font-black uppercase italic ${activeTab() === "photo" ? "bg-white text-black" : "text-white/50"}`}
               >
-                View Photo
+                Photo
               </button>
               <button
                 onClick={() => {
@@ -452,7 +432,7 @@ export default function Photobooth() {
                 }}
                 class={`flex-1 font-black uppercase italic ${activeTab() === "qr" ? "bg-yellow-500 text-black" : "text-white/50"}`}
               >
-                Get QR Code
+                QR Code
               </button>
               <button
                 onClick={() => setPreviewItem(null)}
@@ -471,7 +451,7 @@ export default function Photobooth() {
               <Show when={activeTab() === "qr"}>
                 <div class="bg-white p-12 rounded-[60px] flex flex-col items-center gap-10 shadow-2xl scale-125">
                   <canvas ref={qrCanvasRef}></canvas>
-                  <p class="text-black font-black text-center uppercase text-xl tracking-tight">
+                  <p class="text-black font-black text-center uppercase text-xl">
                     Scan for Download
                   </p>
                 </div>
@@ -481,31 +461,30 @@ export default function Photobooth() {
         </div>
       </Show>
 
-      {/* STATS MODAL */}
       <Show when={showStats()}>
         <div class="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 p-10 animate-pop">
-          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-[0_0_100px_rgba(234,179,8,0.2)]">
+          <div class="w-full max-w-2xl bg-zinc-900 p-20 border-l-[24px] border-yellow-500 rounded-[60px] relative shadow-2xl">
             <button
               onClick={() => setShowStats(false)}
               class="absolute top-12 right-12 text-white/30 hover:text-white transition-all"
             >
               <X size={60} />
             </button>
-            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8 tracking-tighter">
+            <h2 class="text-7xl font-black uppercase italic mb-16 text-white border-b-4 border-white/10 pb-8">
               Telemetry
             </h2>
             <div class="flex flex-col gap-12 text-center">
               <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
                 <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Total Captures
+                  Captured
                 </span>
-                <span class="text-[12rem] font-black italic tracking-tighter text-white leading-none">
+                <span class="text-[12rem] font-black italic text-white leading-none">
                   {stats().taken}
                 </span>
               </div>
               <div class="bg-black/50 p-12 rounded-[50px] border-2 border-white/5">
                 <span class="text-2xl font-black text-white/40 uppercase mb-4 block tracking-widest">
-                  Total Printed
+                  Printed
                 </span>
                 <span class="text-[12rem] font-black italic text-yellow-500 leading-none">
                   {stats().printed}
