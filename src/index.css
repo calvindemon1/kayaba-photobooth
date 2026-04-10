@@ -33,3 +33,7 @@
 .stagger-3 {
   animation-delay: 0.3s;
 }
+
+.no-mirror {
+  transform: scaleX(1) !important;
+}

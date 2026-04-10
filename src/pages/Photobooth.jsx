@@ -261,7 +261,7 @@ export default function Photobooth() {
           <Show when={!photo() && !processedPhoto()}>
             <img
               src={`${BASE_URL}/stream-landscape?t=${Date.now()}`}
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover no-mirror"
               alt="Live Stream"
             />
           </Show>
