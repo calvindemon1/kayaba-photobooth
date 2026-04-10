@@ -52,7 +52,6 @@ export default function Photobooth() {
     }
   };
 
-  // --- REVISI GALLERY: SINKRON LOKAL & SORT TERBARU ---
   const fetchGallery = async () => {
     setIsLoadingGallery(true);
     try {
@@ -60,23 +59,18 @@ export default function Photobooth() {
         `${BASE_URL}/api/all-local-photos-and-generated-qrs`,
       );
       const dataLocal = await resLocal.json();
-
       if (dataLocal.paths) {
-        // 1. Sort berdasarkan timestamp terbesar (terbaru) duluan
         const sortedPaths = [...dataLocal.paths].sort(
           (a, b) => b.timestamp - a.timestamp,
         );
-
         const mappedGallery = sortedPaths.map((item) => {
           const fileName = item.result_photo_url.split(/[\\/]/).pop();
-
           return {
             src: `${BASE_URL}/photo-result/${fileName}`,
             downloadUrl: `${DOWNLOAD_PAGE_URL}?photo=${encodeURIComponent(item.result_photo_url)}`,
             createdAt: item.created_at,
           };
         });
-
         setGallery(mappedGallery);
       }
     } catch (err) {
@@ -113,11 +107,9 @@ export default function Photobooth() {
       await fetch(`${BASE_URL}/takephoto-landscape`);
       const resPreview = await fetch(`${BASE_URL}/getpreviewpath`);
       const dataPreview = await resPreview.json();
-
       if (dataPreview.photo) {
         const fileName = dataPreview.photo.split(/[\\/]/).pop();
-        const freshUrl = `${BASE_URL}/photo-preview/${fileName}?t=${Date.now()}`;
-        setPhoto(freshUrl);
+        setPhoto(`${BASE_URL}/photo-preview/${fileName}?t=${Date.now()}`);
         playAudio("/sfx/shutter.mp3");
       }
     } catch (err) {
@@ -130,16 +122,13 @@ export default function Photobooth() {
     try {
       const formData = new FormData();
       formData.append("framing_option_int", "0");
-
       const res = await fetch(`${BASE_URL}/api/copy-and-get-download-path`, {
         method: "POST",
         body: formData,
       });
-
       if (res.ok) {
         const resFinal = await fetch(`${BASE_URL}/getresultpath`);
         const dataFinal = await resFinal.json();
-
         if (dataFinal.photo) {
           const fileName = dataFinal.photo.split(/[\\/]/).pop();
           setProcessedPhoto(
@@ -193,7 +182,7 @@ export default function Photobooth() {
           <style>
             @page { size: 15.4cm 10.3cm landscape; margin: 0; }
             body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: white; }
-            img { width: 15.4cm; height: 10.3cm; object-fit: cover; }
+            img { width: 15.4cm; height: 10.3cm; object-fit: cover; transform: scaleX(-1); }
           </style>
         </head>
         <body>
@@ -220,6 +209,11 @@ export default function Photobooth() {
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 20px; border: 3px solid black; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #eab308; }
+        
+        /* UN-MIRROR LOGIC: Membalikkan gambar yang secara default di-mirror browser */
+        .fix-mirror {
+          transform: scaleX(-1) !important;
+        }
       `}</style>
 
       {/* HEADER */}
@@ -261,12 +255,16 @@ export default function Photobooth() {
           <Show when={!photo() && !processedPhoto()}>
             <img
               src={`${BASE_URL}/stream-landscape?t=${Date.now()}`}
-              class="w-full h-full object-cover no-mirror"
+              class="w-full h-full object-cover fix-mirror"
               alt="Live Stream"
             />
           </Show>
+
           <Show when={photo() && !processedPhoto()}>
-            <img src={photo()} class="w-full h-full object-cover animate-pop" />
+            <img
+              src={photo()}
+              class="w-full h-full object-cover animate-pop fix-mirror"
+            />
             <Show when={isProcessing()}>
               <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6 backdrop-blur-xl">
                 <span class="loader"></span>
@@ -276,15 +274,17 @@ export default function Photobooth() {
               </div>
             </Show>
           </Show>
+
           <Show when={processedPhoto()}>
             <img
               src={processedPhoto()}
-              class="w-full h-full object-cover animate-pop"
+              class="w-full h-full object-cover animate-pop fix-mirror"
             />
             <div class="absolute top-12 left-12 bg-green-500 text-black font-black px-10 py-4 rounded-full text-2xl uppercase italic animate-bounce shadow-2xl border-4 border-black">
               READY!
             </div>
           </Show>
+
           <Show when={countdown() !== null}>
             <div class="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-50">
               <span class="text-[20rem] font-black text-yellow-500 animate-ping italic drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]">
@@ -355,6 +355,7 @@ export default function Photobooth() {
         </div>
       </div>
 
+      {/* MODALS */}
       <Show when={showGallery()}>
         <div class="fixed inset-0 z-[150] flex flex-col bg-black/95 backdrop-blur-3xl p-8 animate-pop">
           <div class="shrink-0 flex justify-between items-center mb-10 border-b-4 border-yellow-500 pb-8">
@@ -383,7 +384,7 @@ export default function Photobooth() {
                   <div class="group relative aspect-[3/2] bg-zinc-900 border-2 border-white/10 rounded-[60px] overflow-hidden shadow-2xl transition-all duration-300 hover:border-yellow-500">
                     <img
                       src={item.src}
-                      class="w-full h-full object-cover"
+                      class="w-full h-full object-cover fix-mirror"
                       loading="lazy"
                     />
                     <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300 gap-16 backdrop-blur-md">
@@ -408,11 +409,9 @@ export default function Photobooth() {
               </For>
             </div>
           </div>
-          <div class="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black to-transparent pointer-events-none"></div>
         </div>
       </Show>
 
-      {/* Modal Preview & Stats tetep di bawah */}
       <Show when={previewItem()}>
         <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-10 animate-pop">
           <div class="relative flex flex-col bg-zinc-900 border-2 border-white/10 rounded-[80px] overflow-hidden w-full max-w-[1000px] shadow-[0_0_120px_rgba(0,0,0,1)]">
@@ -446,7 +445,7 @@ export default function Photobooth() {
               <Show when={activeTab() === "photo"}>
                 <img
                   src={previewItem().src}
-                  class="w-full h-full object-contain rounded-[40px] shadow-2xl animate-pop"
+                  class="w-full h-full object-contain rounded-[40px] shadow-2xl animate-pop fix-mirror"
                 />
               </Show>
               <Show when={activeTab() === "qr"}>
